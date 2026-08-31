@@ -3,17 +3,11 @@
 
 export const SH_OFFSET_MIN = 8 * 60;
 export const DAY_MIN = 1440;
-const DAY_MS = 86_400_000;
 
 /** 现在=北京时间的「当日零点 UTC 起算的分钟数」(含秒小数)。不依赖本机时区。 */
 export function shanghaiMinutes(now = new Date()): number {
   const shifted = new Date(now.getTime() + (now.getTimezoneOffset() + SH_OFFSET_MIN) * 60_000);
   return shifted.getHours() * 60 + shifted.getMinutes() + shifted.getSeconds() / 60;
-}
-
-/** 北京时间毫秒当日内的偏移 (ms)。 */
-export function shanghaiMsOfDay(now: Date): number {
-  return (((now.getTime() + SH_OFFSET_MIN * 60_000) % DAY_MS) + DAY_MS) % DAY_MS;
 }
 
 export function parseHm(s: string): number {

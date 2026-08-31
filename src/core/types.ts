@@ -24,8 +24,8 @@ export interface OfferRule {
 export interface DiscountEntry {
   model: string;
   applies: OfferRule[];
-  bestFactor?: number;
-  bestRuleId?: string;
+  /** m3：按 unit 分桶各取数值最小（两套单位不互算，跨单位比较无意义，故弃单值 bestFactor/bestRuleId） */
+  bestFactors?: Partial<Record<OfferUnit, number>>;
 }
 
 export interface WindowView {

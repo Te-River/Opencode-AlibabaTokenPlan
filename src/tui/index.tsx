@@ -18,6 +18,13 @@ const PKG_ID = "@te-river/opencode-alibabatokenplan";
 const POLL_MS = 30_000;
 const EVENT_DEBOUNCE_MS = [150, 600]; // quota 同款节奏
 
+// ─────────────────────────── M3：全模块唯一 1Hz 时钟 ───────────────────────────
+// tui() 顶层 createSignal(now) + 仅一个 setInterval，双清理（Solid root onCleanup +
+// api.lifecycle.onDispose）；sidebar/dialog/home 组件只在响应式 accessor 里读 getNow()
+// 订阅该信号，不再各自建局部 setInterval（旧实现每次重挂槽位/对话框都泄漏一个定时器）。
+let getNow: () => number = () => Date.now(); // tui() 未运行时的兜底（槽件不会先于 tui() 渲染）
+let stopSharedTicker: (() => void) | null = null;
+
 // ─────────────────────────── 无 JSX 渲染助手 ───────────────────────────
 
 type Child = string | number | boolean | null | undefined | (() => unknown) | object | Child[];
@@ -47,9 +54,7 @@ function insertChild(parent: any, c: Child): void {
 
 /** 一行文本；content 可为字符串或 accessor（每秒 tick 就地更新，不重建节点）。 */
 function line(text: string | (() => string), style: HProps = {}): any {
-  const props: HProps = { wrapMode: "word", ...style };
-  if (typeof text === "function") props.content = text;
-  else props.content = text;
+  const props: HProps = { wrapMode: "word", ...style, content: text };
   return h("text", props);
 }
 
@@ -167,10 +172,7 @@ function strikethroughText(s: string): string {
 
 function buildSidebar(api: any, vs: ViewState, sessionID: string, collapsed: () => boolean, toggle: () => void): any {
   const theme = () => api.theme.current;
-  const [now, setNow] = createSignal(Date.now());
-  const tick = setInterval(() => setNow(Date.now()), 1000);
-  tick.unref?.();
-  onCleanup(() => clearInterval(tick));
+  const now = getNow; // M3：订阅全模块唯一 1Hz 信号（不再局部 setInterval）
 
   const header = h("box", { style: { flexDirection: "row", gap: 1 }, onMouseUp: toggle },
     line("Token Plan 优惠", { fg: () => theme().text }),
@@ -267,10 +269,7 @@ function openMainDialog(api: any, vs: ViewState): void {
 
 function openTabDialog(api: any, vs: ViewState, tab: string): void {
   const theme = () => api.theme.current;
-  const [now, setNow] = createSignal(Date.now());
-  const t = setInterval(() => setNow(Date.now()), 1000);
-  t.unref?.();
-  onCleanup(() => clearInterval(t));
+  const now = getNow; // M3：订阅共享 1Hz 时钟
 
   const rowsFor = (): string[] => {
     const s = vs.get().status;
@@ -342,12 +341,29 @@ const tui = async (api: any, options?: unknown, _meta?: unknown) => {
   if (g.__atpTuiLoaded) return; // 双实例守卫（kv 键统一 atp. 命名空间）
   g.__atpTuiLoaded = true;
 
+  // ── M3：全模块唯一 1Hz ticker，本函数顶层注册一次；双清理=Solid root onCleanup + 宿主 onDispose ──
+  const [nowSig, setNowSig] = createSignal(Date.now());
+  getNow = nowSig;
+  const sharedTick = setInterval(() => setNowSig(Date.now()), 1000);
+  sharedTick.unref?.();
+  let stopped = false;
+  stopSharedTicker = () => { if (stopped) return; stopped = true; clearInterval(sharedTick); };
+  try { onCleanup(stopSharedTicker); } catch {} // 宿主未包 Solid root 时静默，靠 onDispose 兜底
+  const stopTicker = stopSharedTicker;
+
   const vs = createViewState(api);
   let cfg = vs.cfg;
   try {
     const extra = typeof options === "string" ? undefined : (options as any);
     if (extra && typeof extra === "object") {
-      for (const k of ["sidebar", "webpanel", "toast", "refresh"]) if (extra[k]) Object.assign((cfg as any)[k], extra[k]);
+      for (const k of ["sidebar", "webpanel", "toast", "refresh"]) {
+        const v = extra[k];
+        if (v === undefined) continue;
+        // m7：toast 等布尔/标量键直接赋值（旧 `if(extra[k]) Object.assign(cfg[k], v)` 对 boolean
+        // 既丢 false 又静默失效），对象键才做浅合并
+        if (typeof v !== "object" || v === null) (cfg as any)[k] = v;
+        else Object.assign((cfg as any)[k] ?? {}, v);
+      }
     }
   } catch {}
   void cfg;
@@ -374,11 +390,8 @@ const tui = async (api: any, options?: unknown, _meta?: unknown) => {
       },
       home_bottom() {
         if (!anyTokenPlanProvider(api)) return null; // 门控=state.provider 含任一 TP 条目
-        const [now, setNow] = createSignal(Date.now());
-        const t = setInterval(() => setNow(Date.now()), 30_000);
-        t.unref?.();
-        onCleanup(() => clearInterval(t));
-        return line(() => homeSummaryLine(vs.get().status, new Date(now())), { fg: () => api.theme.current.textMuted });
+        // M3：复用共享 1Hz 时钟（摘要粒度到分钟，逐秒重算成本可忽略），不再局部 setInterval
+        return line(() => homeSummaryLine(vs.get().status, new Date(getNow())), { fg: () => api.theme.current.textMuted });
       },
     },
   });
@@ -395,7 +408,10 @@ const tui = async (api: any, options?: unknown, _meta?: unknown) => {
     }],
     bindings: [],
   });
-  api.lifecycle.onDispose(() => { try { dispose(); } catch {} });
+  api.lifecycle.onDispose(() => {
+    try { stopTicker(); } catch {} // M3：宿主生命周期终止时停掉共享 ticker
+    try { dispose(); } catch {}
+  });
 };
 
 export default { id: PKG_ID, tui };

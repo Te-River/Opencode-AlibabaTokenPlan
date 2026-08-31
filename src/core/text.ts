@@ -1,6 +1,6 @@
 // 展示层格式化工具（契约 §3 展示规则 E 表转录）。纯函数，可 node 直测。
 
-import type { OfferOrigin, StatusFile } from "./types";
+import type { StatusFile } from "./types";
 import { fmtCountdown, fmtShortDur, windowState } from "./rules";
 
 /** 倍率串：f.toFixed(2) 去尾 0 + "x"（E 表原文规则）。 */
@@ -20,15 +20,6 @@ export function showStrike(base?: number, cur?: number): boolean {
 /** 用组合删除线字符模拟终端删除线（03-D4「删除线文本模拟」）。 */
 export function strikethrough(s: string): string {
   return s.replace(/[^\u0300-\u036f]/g, (c) => c + "\u0336");
-}
-
-export function originLabel(o: OfferOrigin, snapshotDate?: string): string {
-  switch (o) {
-    case "bailian-live": return "百炼实时接口";
-    case "bailian-cli": return "本机 bl CLI";
-    case "bailian-snapshot": return "百炼快照" + (snapshotDate ? ` ${snapshotDate}` : "");
-    case "qoder-snapshot": return "Qoder 快照" + (snapshotDate ? ` ${snapshotDate}` : "");
-  }
 }
 
 /** 「N 后开始（22:00）」/「N 后结束（08:00）」（旧 countdown 文案语义）。 */
@@ -68,8 +59,10 @@ export function homeSummaryLine(st: StatusFile, now = new Date()): string {
       : `${starModel.model}×${(starModel.effective ?? starModel.regular ?? "").replace("x", "")}`;
     parts.push(seg);
   }
-  const remain = new Date(w.nextBoundaryAt).getTime() - now.getTime();
-  parts.push(`${w.activeNow ? "距结束" : "距开始"} ${fmtShortDur(remain)}`);
+  // m4：本地按 start/end(HH:MM, tz) 重算下一边界——stale 文件里的绝对 nextBoundaryAt
+  // 已冻结（旧值），重算保证 home 摘要倒计时持续走字；active 判定同步重算。
+  const ws = windowState(w, now);
+  parts.push(`${ws.active ? "距结束" : "距开始"} ${fmtShortDur(ws.nextBoundaryAtMs - now.getTime())}`);
   parts.push(sourceBadgeLine(st));
   return parts.join(" · ");
 }

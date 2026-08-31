@@ -138,7 +138,7 @@ export function qoderSnapshotOffers(): OfferRule[] {
 
 /**
  * §3 表 E 行「在卖常规倍率表」——非优惠，供「当前会话模型倍率行」展示基线。
- * 来源：Qoder 快照 2026-08-31（state.vscdb 转录）。kimi-k2.7-code highspeed=0.6。
+ * 来源：Qoder 客户端公开界面快照转录 2026-08-31。kimi-k2.7-code highspeed=0.6。
  */
 export const QODER_INSALE_FACTORS: Record<string, { factor: number; note?: string }> = {
   auto: { factor: 0.5 },

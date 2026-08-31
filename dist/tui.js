@@ -212,9 +212,13 @@ function catalogToOffers(models, origin, snapshotDate) {
       ...snapshotDate ? { snapshotDate } : {}
     });
   }
+  const windowedModels = /* @__PURE__ */ new Set([
+    ...out.filter((o) => o.kind === "time-window").flatMap((o) => o.models.map((m) => m.toLowerCase())),
+    ...BAILIAN_WINDOW_RULES.flatMap((r) => r.models.map((m) => m.toLowerCase()))
+  ]);
   for (const m of models) {
     const model = m.model.toLowerCase();
-    if (offpeakModels.includes(model)) continue;
+    if (windowedModels.has(model)) continue;
     const std = m.prices.find((p) => p.type === "input_token" && p.discount !== void 0 && p.discount < 1);
     const modelFactor = std?.discount;
     const batchEntry = m.prices.find((p) => /batch/i.test(p.type) && p.discount !== void 0 && p.discount < 1);
@@ -242,9 +246,20 @@ function catalogToOffers(models, origin, snapshotDate) {
 function mergeKey(r) {
   return [r.kind, r.unit, r.window ? `${r.window.start}-${r.window.end}@${r.window.tz}` : "-", r.factor ?? "-", r.baseFactor ?? "-", [...r.models].sort().join(",")].join("|");
 }
+function explodePerModel(rules) {
+  const out = [];
+  for (const r of rules) {
+    if (r.models.length <= 1) {
+      out.push(r);
+      continue;
+    }
+    for (const m of new Set(r.models)) out.push({ ...r, id: `${r.id}#${m}`, models: [m] });
+  }
+  return out;
+}
 function mergeOffers(all) {
   const byKey = /* @__PURE__ */ new Map();
-  for (const r of all) {
+  for (const r of explodePerModel(all)) {
     const k = mergeKey(r);
     const prev = byKey.get(k);
     if (!prev) {
@@ -367,8 +382,8 @@ function homeSummaryLine(st, now = /* @__PURE__ */ new Date()) {
     const seg = starModel.regular && starModel.effective && starModel.regular !== starModel.effective ? `${starModel.model}\xD7${starModel.regular.replace("x", "")}/\xD7${starModel.effective.replace("x", "")}` : `${starModel.model}\xD7${(starModel.effective ?? starModel.regular ?? "").replace("x", "")}`;
     parts.push(seg);
   }
-  const remain = new Date(w.nextBoundaryAt).getTime() - now.getTime();
-  parts.push(`${w.activeNow ? "\u8DDD\u7ED3\u675F" : "\u8DDD\u5F00\u59CB"} ${fmtShortDur(remain)}`);
+  const ws = windowState(w, now);
+  parts.push(`${ws.active ? "\u8DDD\u7ED3\u675F" : "\u8DDD\u5F00\u59CB"} ${fmtShortDur(ws.nextBoundaryAtMs - now.getTime())}`);
   parts.push(sourceBadgeLine(st));
   return parts.join(" \xB7 ");
 }
@@ -385,9 +400,8 @@ var CATALOG_ORIGIN = {
   snapshot: "bailian-snapshot"
 };
 function windowId(start, end) {
-  const sh = (hm) => String(parseHm(hm) / 60 | 0).padStart(2, "0");
   if (start === "22:00" && end === "08:00") return "offpeak-22-08";
-  return `win-${sh(start)}-${sh(end)}`;
+  return `win-${start.replace(":", "")}-${end.replace(":", "")}`;
 }
 function buildOffers(catalog) {
   const origin = CATALOG_ORIGIN[catalog.source] ?? "bailian-snapshot";
@@ -401,7 +415,7 @@ function buildOffers(catalog) {
     window: { start: r.start, end: r.end, tz: "Asia/Shanghai" },
     note: r.source,
     links: [],
-    origins: [origin],
+    origins: ["bailian-snapshot"],
     snapshotDate: BAILIAN_SNAPSHOT_AT
   }));
   return mergeOffers([...qoderSnapshotOffers(), ...legacy, ...catalogToOffers(catalog.models, origin, catalog.fetchedAt?.slice(0, 10))]);
@@ -467,16 +481,25 @@ function buildDiscounts(offers) {
   }
   const out = [];
   for (const [model, applies] of byModel) {
-    const best = applies.find((r) => r.factor !== void 0);
+    const bestFactors = {};
+    for (const r of applies) {
+      if (r.factor === void 0) continue;
+      const cur = bestFactors[r.unit];
+      if (cur === void 0 || r.factor < cur) bestFactors[r.unit] = r.factor;
+    }
     out.push({
       model,
       applies,
-      ...best?.factor !== void 0 ? { bestFactor: best.factor, bestRuleId: best.id } : {}
+      ...Object.keys(bestFactors).length ? { bestFactors } : {}
     });
   }
+  const lowest = (d) => {
+    const vs = Object.values(d.bestFactors ?? {});
+    return vs.length ? Math.min(...vs) : 1;
+  };
   const seriesOrder = (n) => /^qwen/.test(n) ? 0 : /^(deepseek|glm|kimi|minimax)/.test(n) ? 1 : 2;
   out.sort((a, b) => {
-    const fa = a.bestFactor ?? 1, fb = b.bestFactor ?? 1;
+    const fa = lowest(a), fb = lowest(b);
     if (fa !== fb) return fa - fb;
     const sd = seriesOrder(a.model) - seriesOrder(b.model);
     if (sd) return sd;
@@ -656,7 +679,7 @@ function loadConfig() {
     const raw = parseJsonc(fs.readFileSync(configFilePath(), "utf8"));
     if (raw && typeof raw === "object") {
       if (raw.webpanel?.enabled !== void 0) d.webpanel.enabled = !!raw.webpanel.enabled;
-      if (Number.isInteger(raw.webpanel?.port)) d.webpanel.port = raw.webpanel.port;
+      if (Number.isInteger(raw.webpanel?.port) && raw.webpanel.port >= 1024 && raw.webpanel.port <= 65535) d.webpanel.port = raw.webpanel.port;
       if (Number.isInteger(raw.sidebar?.order)) d.sidebar.order = raw.sidebar.order;
       if (raw.sidebar?.showNonTokenPlan !== void 0) d.sidebar.showNonTokenPlan = !!raw.sidebar.showNonTokenPlan;
       if (raw.toast !== void 0) d.toast = !!raw.toast;
@@ -684,6 +707,15 @@ function readStatusFile(now = /* @__PURE__ */ new Date()) {
 }
 
 // src/tui/read-status.ts
+function recomputeWindows(status, now) {
+  return {
+    ...status,
+    windows: status.windows.map((w) => {
+      const ws = windowState(w, now);
+      return { ...w, activeNow: ws.active, boundaryKind: ws.boundaryKind, nextBoundaryAt: ws.nextBoundaryAt };
+    })
+  };
+}
 function embeddedSnapshotView(now = /* @__PURE__ */ new Date()) {
   const status = buildStatus({ source: "snapshot", models: [], fetchedAt: "embedded" }, now);
   return { status, degraded: true };
@@ -694,9 +726,9 @@ function loadStatusView(now = /* @__PURE__ */ new Date()) {
     case "live":
       return { status: r.status, degraded: false };
     case "stale":
-      return { status: r.status, degraded: true };
+      return { status: recomputeWindows(r.status, now), degraded: true };
     default:
-      return embeddedSnapshotView(now);
+      return { status: recomputeWindows(embeddedSnapshotView(now).status, now), degraded: true };
   }
 }
 
@@ -704,6 +736,8 @@ function loadStatusView(now = /* @__PURE__ */ new Date()) {
 var PKG_ID = "@te-river/opencode-alibabatokenplan";
 var POLL_MS = 3e4;
 var EVENT_DEBOUNCE_MS = [150, 600];
+var getNow = () => Date.now();
+var stopSharedTicker = null;
 function h(type, props, ...children) {
   const el = createElement(type);
   for (const [k, v] of Object.entries(props ?? {})) {
@@ -731,9 +765,7 @@ function insertChild(parent, c) {
   insert(parent, c);
 }
 function line(text, style = {}) {
-  const props = { wrapMode: "word", ...style };
-  if (typeof text === "function") props.content = text;
-  else props.content = text;
+  const props = { wrapMode: "word", ...style, content: text };
   return h("text", props);
 }
 var TP_PROVIDER_RE = /^alibaba-token-plan(-cn)?$/i;
@@ -848,10 +880,7 @@ function strikethroughText(s) {
 }
 function buildSidebar(api, vs, sessionID, collapsed, toggle) {
   const theme = () => api.theme.current;
-  const [now, setNow] = createSignal(Date.now());
-  const tick = setInterval(() => setNow(Date.now()), 1e3);
-  tick.unref?.();
-  onCleanup(() => clearInterval(tick));
+  const now = getNow;
   const header = h(
     "box",
     { style: { flexDirection: "row", gap: 1 }, onMouseUp: toggle },
@@ -949,10 +978,7 @@ function openMainDialog(api, vs) {
 }
 function openTabDialog(api, vs, tab) {
   const theme = () => api.theme.current;
-  const [now, setNow] = createSignal(Date.now());
-  const t = setInterval(() => setNow(Date.now()), 1e3);
-  t.unref?.();
-  onCleanup(() => clearInterval(t));
+  const now = getNow;
   const rowsFor = () => {
     const s = vs.get().status;
     const tt = now();
@@ -1018,12 +1044,32 @@ var tui = async (api, options, _meta) => {
   const g = globalThis;
   if (g.__atpTuiLoaded) return;
   g.__atpTuiLoaded = true;
+  const [nowSig, setNowSig] = createSignal(Date.now());
+  getNow = nowSig;
+  const sharedTick = setInterval(() => setNowSig(Date.now()), 1e3);
+  sharedTick.unref?.();
+  let stopped = false;
+  stopSharedTicker = () => {
+    if (stopped) return;
+    stopped = true;
+    clearInterval(sharedTick);
+  };
+  try {
+    onCleanup(stopSharedTicker);
+  } catch {
+  }
+  const stopTicker = stopSharedTicker;
   const vs = createViewState(api);
   let cfg = vs.cfg;
   try {
     const extra = typeof options === "string" ? void 0 : options;
     if (extra && typeof extra === "object") {
-      for (const k of ["sidebar", "webpanel", "toast", "refresh"]) if (extra[k]) Object.assign(cfg[k], extra[k]);
+      for (const k of ["sidebar", "webpanel", "toast", "refresh"]) {
+        const v = extra[k];
+        if (v === void 0) continue;
+        if (typeof v !== "object" || v === null) cfg[k] = v;
+        else Object.assign(cfg[k] ?? {}, v);
+      }
     }
   } catch {
   }
@@ -1058,11 +1104,7 @@ var tui = async (api, options, _meta) => {
       },
       home_bottom() {
         if (!anyTokenPlanProvider(api)) return null;
-        const [now, setNow] = createSignal(Date.now());
-        const t = setInterval(() => setNow(Date.now()), 3e4);
-        t.unref?.();
-        onCleanup(() => clearInterval(t));
-        return line(() => homeSummaryLine(vs.get().status, new Date(now())), { fg: () => api.theme.current.textMuted });
+        return line(() => homeSummaryLine(vs.get().status, new Date(getNow())), { fg: () => api.theme.current.textMuted });
       }
     }
   });
@@ -1082,6 +1124,10 @@ var tui = async (api, options, _meta) => {
     bindings: []
   });
   api.lifecycle.onDispose(() => {
+    try {
+      stopTicker();
+    } catch {
+    }
     try {
       dispose();
     } catch {

@@ -19,7 +19,7 @@ import {
 import { parseGroups, bailianSnapshotModels, BAILIAN_SNAPSHOT_AT, CREDITS_PER_YUAN } from "../core/bailian-snapshot";
 import { QODER_SNAPSHOT_DATE, QODER_INSALE_FACTORS } from "../core/qoder-snapshot";
 import { windowState, fmtCountdown } from "../core/rules";
-import { fmtFactor, windowCountdownText, strikethrough, showStrike } from "../core/text";
+import { fmtFactor, strikethrough, showStrike } from "../core/text";
 import { isCrossVerified } from "../core/merge";
 import type { ModelEntry, OfferRule, StatusFile } from "../core/types";
 
@@ -78,11 +78,18 @@ async function fetchCatalogLive(): Promise<ModelEntry[]> {
 }
 
 // 源2：本机 bl CLI
+/** 组装 bl 子进程调用参数（独立导出便于单测断言 argv 形态，见 test.mjs M1）。
+ * 关键：command 恒为 "bl"、args 传数组——POSIX 下绝不能把整串当 command（shell:false 时
+ * execvp 会把 "bl model list" 整串当可执行名查找 → 永久 ENOENT，cli 源静默失效）。
+ * win32 下 bl 是 .cmd shim 需经 shell，args 里的参数由 Node 逐个加引号安全拼接。 */
+export function blSpawnPlan(args: string[]): { command: string; args: string[]; options: cp.SpawnOptions } {
+  return { command: "bl", args: [...args], options: { shell: process.platform === "win32", env: { ...process.env, NO_COLOR: "1" } } };
+}
+
 function runBl(args: string[], timeoutMs = 30_000): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
-    // Windows 上 bl 是 .cmd shim，必须经 shell 执行；参数全部为内部控制常量，无注入面
-    const cmdline = process.platform === "win32" ? ["bl", ...args].join(" ") : "bl " + args.join(" ");
-    const child = cp.spawn(cmdline, { shell: process.platform === "win32", env: { ...process.env, NO_COLOR: "1" } });
+    const plan = blSpawnPlan(args);
+    const child = cp.spawn(plan.command, plan.args, plan.options);
     let stdout = "", stderr = "";
     let done = false;
     const timer = setTimeout(() => {
@@ -162,10 +169,14 @@ async function refreshCatalog(cfg: AtpConfig, force = false): Promise<void> {
       state.models = models;
       state.error = err || undefined;
       saveCache(models);
-    } else if (force) {
-      const cached = loadCache();
-      if (cached) { state.models = cached; state.fetchedAt = BAILIAN_SNAPSHOT_AT + "（缓存）"; }
+    } else {
+      // D1：双败（live+cli 均未产出）时降级原因必须落进 state.error → status.sources.error，
+      // 不再只在 force 分支写——静默的「源失效」会让面板/工具显示成"正常快照态"。
       state.error = err || state.error;
+      if (force) {
+        const cached = loadCache();
+        if (cached) { state.models = cached; state.fetchedAt = BAILIAN_SNAPSHOT_AT + "（缓存）"; }
+      }
     }
     publishStatus();
     if (cfg.toast) void maybeToast(); // 刷新后推进 toast 状态机（保留旧行为）
@@ -216,6 +227,9 @@ async function maybeToast(): Promise<void> {
   for (const w of st.windows) {
     const ws = windowState(w, new Date());
     const prev = lastActive.get(w.id);
+    // m6：判翻转后先落键再 await showToast——并发/重入（tick 定时器与面板刷新同时触发）时，
+    // 第二个调用读到的 prev 已是新态 → 不会二次弹同窗 toast（旧顺序留有 await 窗口期竞态）。
+    lastActive.set(w.id, ws.active);
     if (cfgNow?.toast !== false && prev !== undefined && prev !== ws.active && client) {
       const models = w.models.map((m) => `${m.model}${m.effective ? "→" + m.effective : ""}`);
       const msg = ws.active
@@ -225,7 +239,6 @@ async function maybeToast(): Promise<void> {
         await client.tui?.showToast?.({ body: { title: "Token Plan 优惠提醒", message: msg, variant: ws.active ? "success" : "info", duration: 8000 } });
       } catch {}
     }
-    lastActive.set(w.id, ws.active);
   }
 }
 
@@ -244,17 +257,46 @@ function renderHtml(): string {
 }
 
 let server: http.Server | null = null;
+const REFRESH_THROTTLE_MS = 5_000;
+let lastRefreshAt = 0; // /api/refresh 进程内节流戳（M2）
+
+/** M2 同源校验：Origin 缺省（同源 GET/curl 常不带）或 host 与本服务 Host 完全一致才放行；
+ * 请求带 Sec-Fetch-Site 时额外闸——必须 same-origin（浏览器发起的跨站请求会被标记拦截）。 */
+function isSameOrigin(req: http.IncomingMessage): boolean {
+  const origin = req.headers.origin;
+  if (origin !== undefined) {
+    let oh: string;
+    try { oh = new URL(String(origin)).host; } catch { return false; }
+    if (oh !== String(req.headers.host ?? "")) return false;
+  }
+  const sfs = req.headers["sec-fetch-site"];
+  if (sfs !== undefined && String(sfs).toLowerCase() !== "same-origin") return false;
+  return true;
+}
 
 function startPanel(port: number): Promise<string> {
   return new Promise((resolve) => {
     const handler = (req: http.IncomingMessage, res: http.ServerResponse) => {
       const url = (req.url || "/").split("?")[0];
       if (url === "/api/status") {
-        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" });
+        // M2：panel 与本服务同源，删除 CORS 通配头（不再允许任意站点跨源读状态）
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
         res.end(JSON.stringify(currentStatus()));
         return;
       }
       if (url === "/api/refresh") {
+        if (!isSameOrigin(req)) {
+          res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
+          res.end("forbidden");
+          return;
+        }
+        const t0 = Date.now();
+        if (t0 - lastRefreshAt < REFRESH_THROTTLE_MS) {
+          res.writeHead(429, { "Retry-After": "5", "Content-Type": "text/plain; charset=utf-8" });
+          res.end("throttled");
+          return;
+        }
+        lastRefreshAt = t0;
         refreshCatalog(cfgNow ?? loadConfig(), true)
           .then(() => { res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" }); res.end("ok"); })
           .catch(() => { res.writeHead(500); res.end("refresh failed"); });
@@ -263,14 +305,18 @@ function startPanel(port: number): Promise<string> {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       res.end(renderHtml());
     };
-    const candidates = [...new Set([lastPort(), port, ...Array.from({ length: 20 }, (_, i) => port + 1 + i)])].filter((p) => p > 0);
+    const candidates = [...new Set([lastPort(), port, ...Array.from({ length: 20 }, (_, i) => port + 1 + i)])].filter((p) => p >= 1024 && p <= 65535);
     let idx = 0;
     const tryListen = () => {
       const p = candidates[idx];
       const s = http.createServer(handler);
-      s.on("error", () => { if (++idx >= candidates.length) { resolve(""); return; } tryListen(); });
-      s.listen(p, "127.0.0.1", () => { savePort(p); resolve(`http://127.0.0.1:${p}`); });
-      server = s;
+      s.on("error", () => {
+        try { s.close(); } catch {} // m8：失败实例显式 close，不留悬挂句柄
+        if (++idx >= candidates.length) { resolve(""); return; }
+        tryListen();
+      });
+      // m8：只在 listen 成功回调内赋 server 句柄（旧代码把绑定失败的实例也写进 server，dispose 关错对象）
+      s.listen(p, "127.0.0.1", () => { server = s; savePort(p); resolve(`http://127.0.0.1:${p}`); });
     };
     tryListen();
   });
@@ -338,7 +384,7 @@ let cfgNow: AtpConfig | null = null;
 const plugin = async (input: any, options?: any) => {
   client = input?.client ?? null;
   const g = globalThis as any;
-  if (g.__atpServerStarted) return { event: async () => {} };
+  if (g.__atpServerStarted) return { event: async () => {}, dispose: () => {} };
   g.__atpServerStarted = true;
 
   // 配置：文件优先，宿主若传 tuple options 则叠加（D5：传了就赢，没传不输）
@@ -347,7 +393,13 @@ const plugin = async (input: any, options?: any) => {
     const extra = typeof options === "string" ? undefined : options;
     if (extra && typeof extra === "object") {
       const merged = JSON.parse(JSON.stringify(cfgNow));
-      for (const k of ["webpanel", "sidebar", "toast", "refresh"]) if ((extra as any)[k] !== undefined) Object.assign((merged as any)[k] ?? {}, (extra as any)[k]);
+      for (const k of ["webpanel", "sidebar", "toast", "refresh"]) {
+        const v = (extra as any)[k];
+        if (v === undefined) continue;
+        // m7：toast 等布尔/标量键直接赋值——旧 Object.assign(bool, v) 静默失效/抛错
+        if (typeof v !== "object" || v === null) (merged as any)[k] = v;
+        else Object.assign((merged as any)[k] ?? {}, v);
+      }
       cfgNow = merged;
     }
   } catch {}
@@ -388,6 +440,12 @@ const plugin = async (input: any, options?: any) => {
 
   return {
     event: async () => {},
+    // m8：宿主卸载 → 关面板 server + 清全部定时器，不留端口/句柄/后台刷新泄漏
+    dispose: () => {
+      for (const t of [catalogTimer, quotaTimer, tickTimer]) clearInterval(t);
+      try { server?.close(); } catch {}
+      server = null;
+    },
     config: async (config: any) => {
       // 兜底命令（03-D4）：无 opentui 层的宿主经此路径走 LLM，接受其 token 成本并注明
       config.command = config.command ?? {};
@@ -406,3 +464,13 @@ const plugin = async (input: any, options?: any) => {
 export default { id: PKG_ID, server: plugin };
 // 命名导出仅为可测试性；宿主装载契约是 default 的 { id, server } 模块形态。
 export const AliBabaTokenPlanPlugin = plugin;
+/** test.mjs 零宿主回归锚点（M1 argv 形态 / M2 同源校验 / m6 toast 竞态序）。
+ * 只读/受控注入引用，不改变任何运行时行为。 */
+export const __testing = {
+  blSpawnPlan,
+  isSameOrigin,
+  maybeToast,
+  lastActive,
+  getStatus: currentStatus,
+  setClient: (c: any) => { client = c; },
+};

@@ -1,7 +1,7 @@
 # @te-river/opencode-alibabatokenplan
 
 Opencode 双入口插件（server + TUI）：把阿里云百炼 **Token Plan 优惠雷达**常驻在 Opencode 侧栏/首页 ——
-三级动态数据源 + Qoder 逆向快照第四源，合并后原子持久化到 `status.json`，附倒计时、模型倍率、
+三级动态数据源 + Qoder 快照第四源（来源：Qoder 客户端公开界面快照转录 2026-08-31），合并后原子持久化到 `status.json`，附倒计时、模型倍率、
 `/tokenplan` 分类明细、边界 toast 与查询工具。
 
 > 📸 截图位（文字版）
@@ -71,6 +71,15 @@ npm test           # 零宿主单测（回退链/合并/跨午夜/JSONC/陈旧�
 npm run smoke      # 零宿主冒烟：窗口断言(23:30/15:00 注入 now)+status.json 落盘
 npm run publish:check
 ```
+
+## Changelog
+
+### 0.1.0（初版要点）
+
+- server + TUI 双入口：百炼目录三级回退（live→cli→snapshot）+ Qoder 静态快照并入，原子持久化 `status.json`（`staleAfterSec` 陈旧降级 + 灰徽标）。
+- TUI：sidebar 优惠面板 / 折叠、home_bottom 一行摘要、`/tokenplan` 分类明细对话框，秒级本地倒计时。
+- 边界 toast（双源同窗只弹一次）、`tokenplan_discounts` 查询工具（旧名 `bailian_discounts` 委托）、可选本地 web 面板（默认关）。
+- Qoder 数据为纯静态快照（来源：Qoder 客户端公开界面快照转录 2026-08-31），不调用任何 Qoder 私有端点。
 
 ## License
 

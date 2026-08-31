@@ -314,9 +314,13 @@ function catalogToOffers(models, origin, snapshotDate) {
       ...snapshotDate ? { snapshotDate } : {}
     });
   }
+  const windowedModels = /* @__PURE__ */ new Set([
+    ...out.filter((o) => o.kind === "time-window").flatMap((o) => o.models.map((m) => m.toLowerCase())),
+    ...BAILIAN_WINDOW_RULES.flatMap((r) => r.models.map((m) => m.toLowerCase()))
+  ]);
   for (const m of models) {
     const model = m.model.toLowerCase();
-    if (offpeakModels.includes(model)) continue;
+    if (windowedModels.has(model)) continue;
     const std = m.prices.find((p) => p.type === "input_token" && p.discount !== void 0 && p.discount < 1);
     const modelFactor = std?.discount;
     const batchEntry = m.prices.find((p) => /batch/i.test(p.type) && p.discount !== void 0 && p.discount < 1);
@@ -344,9 +348,20 @@ function catalogToOffers(models, origin, snapshotDate) {
 function mergeKey(r) {
   return [r.kind, r.unit, r.window ? `${r.window.start}-${r.window.end}@${r.window.tz}` : "-", r.factor ?? "-", r.baseFactor ?? "-", [...r.models].sort().join(",")].join("|");
 }
+function explodePerModel(rules) {
+  const out = [];
+  for (const r of rules) {
+    if (r.models.length <= 1) {
+      out.push(r);
+      continue;
+    }
+    for (const m of new Set(r.models)) out.push({ ...r, id: `${r.id}#${m}`, models: [m] });
+  }
+  return out;
+}
 function mergeOffers(all) {
   const byKey = /* @__PURE__ */ new Map();
-  for (const r of all) {
+  for (const r of explodePerModel(all)) {
     const k = mergeKey(r);
     const prev = byKey.get(k);
     if (!prev) {
@@ -456,9 +471,8 @@ var CATALOG_ORIGIN = {
   snapshot: "bailian-snapshot"
 };
 function windowId(start, end) {
-  const sh = (hm) => String(parseHm(hm) / 60 | 0).padStart(2, "0");
   if (start === "22:00" && end === "08:00") return "offpeak-22-08";
-  return `win-${sh(start)}-${sh(end)}`;
+  return `win-${start.replace(":", "")}-${end.replace(":", "")}`;
 }
 function buildOffers(catalog) {
   const origin = CATALOG_ORIGIN[catalog.source] ?? "bailian-snapshot";
@@ -472,7 +486,7 @@ function buildOffers(catalog) {
     window: { start: r.start, end: r.end, tz: "Asia/Shanghai" },
     note: r.source,
     links: [],
-    origins: [origin],
+    origins: ["bailian-snapshot"],
     snapshotDate: BAILIAN_SNAPSHOT_AT
   }));
   return mergeOffers([...qoderSnapshotOffers(), ...legacy, ...catalogToOffers(catalog.models, origin, catalog.fetchedAt?.slice(0, 10))]);
@@ -538,16 +552,25 @@ function buildDiscounts(offers) {
   }
   const out = [];
   for (const [model, applies] of byModel) {
-    const best = applies.find((r) => r.factor !== void 0);
+    const bestFactors = {};
+    for (const r of applies) {
+      if (r.factor === void 0) continue;
+      const cur = bestFactors[r.unit];
+      if (cur === void 0 || r.factor < cur) bestFactors[r.unit] = r.factor;
+    }
     out.push({
       model,
       applies,
-      ...best?.factor !== void 0 ? { bestFactor: best.factor, bestRuleId: best.id } : {}
+      ...Object.keys(bestFactors).length ? { bestFactors } : {}
     });
   }
+  const lowest = (d) => {
+    const vs = Object.values(d.bestFactors ?? {});
+    return vs.length ? Math.min(...vs) : 1;
+  };
   const seriesOrder = (n) => /^qwen/.test(n) ? 0 : /^(deepseek|glm|kimi|minimax)/.test(n) ? 1 : 2;
   out.sort((a, b) => {
-    const fa = a.bestFactor ?? 1, fb = b.bestFactor ?? 1;
+    const fa = lowest(a), fb = lowest(b);
     if (fa !== fb) return fa - fb;
     const sd = seriesOrder(a.model) - seriesOrder(b.model);
     if (sd) return sd;
@@ -731,7 +754,7 @@ function loadConfig() {
     const raw = parseJsonc(fs.readFileSync(configFilePath(), "utf8"));
     if (raw && typeof raw === "object") {
       if (raw.webpanel?.enabled !== void 0) d.webpanel.enabled = !!raw.webpanel.enabled;
-      if (Number.isInteger(raw.webpanel?.port)) d.webpanel.port = raw.webpanel.port;
+      if (Number.isInteger(raw.webpanel?.port) && raw.webpanel.port >= 1024 && raw.webpanel.port <= 65535) d.webpanel.port = raw.webpanel.port;
       if (Number.isInteger(raw.sidebar?.order)) d.sidebar.order = raw.sidebar.order;
       if (raw.sidebar?.showNonTokenPlan !== void 0) d.sidebar.showNonTokenPlan = !!raw.sidebar.showNonTokenPlan;
       if (raw.toast !== void 0) d.toast = !!raw.toast;
@@ -817,10 +840,13 @@ async function fetchCatalogLive() {
   if (!all.length) throw new Error("catalog \u8FD4\u56DE\u4E3A\u7A7A");
   return parseGroups(all);
 }
+function blSpawnPlan(args) {
+  return { command: "bl", args: [...args], options: { shell: process.platform === "win32", env: { ...process.env, NO_COLOR: "1" } } };
+}
 function runBl(args, timeoutMs = 3e4) {
   return new Promise((resolve) => {
-    const cmdline = process.platform === "win32" ? ["bl", ...args].join(" ") : "bl " + args.join(" ");
-    const child = cp.spawn(cmdline, { shell: process.platform === "win32", env: { ...process.env, NO_COLOR: "1" } });
+    const plan = blSpawnPlan(args);
+    const child = cp.spawn(plan.command, plan.args, plan.options);
     let stdout = "", stderr = "";
     let done = false;
     const timer = setTimeout(() => {
@@ -920,13 +946,15 @@ async function refreshCatalog(cfg, force = false) {
       state.models = models;
       state.error = err || void 0;
       saveCache(models);
-    } else if (force) {
-      const cached = loadCache();
-      if (cached) {
-        state.models = cached;
-        state.fetchedAt = BAILIAN_SNAPSHOT_AT + "\uFF08\u7F13\u5B58\uFF09";
-      }
+    } else {
       state.error = err || state.error;
+      if (force) {
+        const cached = loadCache();
+        if (cached) {
+          state.models = cached;
+          state.fetchedAt = BAILIAN_SNAPSHOT_AT + "\uFF08\u7F13\u5B58\uFF09";
+        }
+      }
     }
     publishStatus();
     if (cfg.toast) void maybeToast();
@@ -970,6 +998,7 @@ async function maybeToast() {
   for (const w of st.windows) {
     const ws = windowState(w, /* @__PURE__ */ new Date());
     const prev = lastActive.get(w.id);
+    lastActive.set(w.id, ws.active);
     if (cfgNow?.toast !== false && prev !== void 0 && prev !== ws.active && client) {
       const models = w.models.map((m) => `${m.model}${m.effective ? "\u2192" + m.effective : ""}`);
       const msg = ws.active ? `${w.label}\u5DF2\u5F00\u59CB\uFF1A${models.join("\u3001")}\uFF08\u81F3 ${w.end}\uFF0C\u5317\u4EAC\u65F6\u95F4\uFF09` : `${w.label}\u5DF2\u7ED3\u675F\uFF1A${models.join("\u3001")}\uFF08\u4E0B\u6B21 ${w.start} \u5F00\u59CB\uFF09`;
@@ -978,7 +1007,6 @@ async function maybeToast() {
       } catch {
       }
     }
-    lastActive.set(w.id, ws.active);
   }
 }
 function renderHtml() {
@@ -992,16 +1020,45 @@ function renderHtml() {
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>Token Plan \u4F18\u60E0\u96F7\u8FBE</title></head><body><pre id="p">\u52A0\u8F7D\u4E2D\u2026</pre><script>async function l(){var r=await fetch("/api/status");document.getElementById("p").textContent=JSON.stringify(await r.json(),null,2)}l();setInterval(l,30000);</script></body></html>`;
 }
 var server = null;
+var REFRESH_THROTTLE_MS = 5e3;
+var lastRefreshAt = 0;
+function isSameOrigin(req) {
+  const origin = req.headers.origin;
+  if (origin !== void 0) {
+    let oh;
+    try {
+      oh = new URL(String(origin)).host;
+    } catch {
+      return false;
+    }
+    if (oh !== String(req.headers.host ?? "")) return false;
+  }
+  const sfs = req.headers["sec-fetch-site"];
+  if (sfs !== void 0 && String(sfs).toLowerCase() !== "same-origin") return false;
+  return true;
+}
 function startPanel(port) {
   return new Promise((resolve) => {
     const handler = (req, res) => {
       const url = (req.url || "/").split("?")[0];
       if (url === "/api/status") {
-        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" });
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
         res.end(JSON.stringify(currentStatus()));
         return;
       }
       if (url === "/api/refresh") {
+        if (!isSameOrigin(req)) {
+          res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
+          res.end("forbidden");
+          return;
+        }
+        const t0 = Date.now();
+        if (t0 - lastRefreshAt < REFRESH_THROTTLE_MS) {
+          res.writeHead(429, { "Retry-After": "5", "Content-Type": "text/plain; charset=utf-8" });
+          res.end("throttled");
+          return;
+        }
+        lastRefreshAt = t0;
         refreshCatalog(cfgNow ?? loadConfig(), true).then(() => {
           res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
           res.end("ok");
@@ -1014,12 +1071,16 @@ function startPanel(port) {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       res.end(renderHtml());
     };
-    const candidates = [.../* @__PURE__ */ new Set([lastPort(), port, ...Array.from({ length: 20 }, (_, i) => port + 1 + i)])].filter((p) => p > 0);
+    const candidates = [.../* @__PURE__ */ new Set([lastPort(), port, ...Array.from({ length: 20 }, (_, i) => port + 1 + i)])].filter((p) => p >= 1024 && p <= 65535);
     let idx = 0;
     const tryListen = () => {
       const p = candidates[idx];
       const s = http.createServer(handler);
       s.on("error", () => {
+        try {
+          s.close();
+        } catch {
+        }
         if (++idx >= candidates.length) {
           resolve("");
           return;
@@ -1027,10 +1088,10 @@ function startPanel(port) {
         tryListen();
       });
       s.listen(p, "127.0.0.1", () => {
+        server = s;
         savePort(p);
         resolve(`http://127.0.0.1:${p}`);
       });
-      server = s;
     };
     tryListen();
   });
@@ -1093,6 +1154,7 @@ var plugin = async (input, options) => {
   client = input?.client ?? null;
   const g = globalThis;
   if (g.__atpServerStarted) return { event: async () => {
+  }, dispose: () => {
   } };
   g.__atpServerStarted = true;
   cfgNow = loadConfig();
@@ -1100,7 +1162,12 @@ var plugin = async (input, options) => {
     const extra = typeof options === "string" ? void 0 : options;
     if (extra && typeof extra === "object") {
       const merged = JSON.parse(JSON.stringify(cfgNow));
-      for (const k of ["webpanel", "sidebar", "toast", "refresh"]) if (extra[k] !== void 0) Object.assign(merged[k] ?? {}, extra[k]);
+      for (const k of ["webpanel", "sidebar", "toast", "refresh"]) {
+        const v = extra[k];
+        if (v === void 0) continue;
+        if (typeof v !== "object" || v === null) merged[k] = v;
+        else Object.assign(merged[k] ?? {}, v);
+      }
       cfgNow = merged;
     }
   } catch {
@@ -1149,6 +1216,15 @@ var plugin = async (input, options) => {
   return {
     event: async () => {
     },
+    // m8：宿主卸载 → 关面板 server + 清全部定时器，不留端口/句柄/后台刷新泄漏
+    dispose: () => {
+      for (const t of [catalogTimer, quotaTimer, tickTimer]) clearInterval(t);
+      try {
+        server?.close();
+      } catch {
+      }
+      server = null;
+    },
     config: async (config) => {
       config.command = config.command ?? {};
       config.command.tokenplan = {
@@ -1164,7 +1240,19 @@ var plugin = async (input, options) => {
 };
 var index_default = { id: PKG_ID, server: plugin };
 var AliBabaTokenPlanPlugin = plugin;
+var __testing = {
+  blSpawnPlan,
+  isSameOrigin,
+  maybeToast,
+  lastActive,
+  getStatus: currentStatus,
+  setClient: (c) => {
+    client = c;
+  }
+};
 export {
   AliBabaTokenPlanPlugin,
+  __testing,
+  blSpawnPlan,
   index_default as default
 };

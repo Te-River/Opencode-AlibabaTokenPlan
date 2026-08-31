@@ -1,13 +1,9 @@
 // src/core/rules.ts
 var SH_OFFSET_MIN = 8 * 60;
 var DAY_MIN = 1440;
-var DAY_MS = 864e5;
 function shanghaiMinutes(now = /* @__PURE__ */ new Date()) {
   const shifted = new Date(now.getTime() + (now.getTimezoneOffset() + SH_OFFSET_MIN) * 6e4);
   return shifted.getHours() * 60 + shifted.getMinutes() + shifted.getSeconds() / 60;
-}
-function shanghaiMsOfDay(now) {
-  return ((now.getTime() + SH_OFFSET_MIN * 6e4) % DAY_MS + DAY_MS) % DAY_MS;
 }
 function parseHm(s) {
   const [h, min] = s.split(":").map(Number);
@@ -88,18 +84,6 @@ function showStrike(base, cur) {
 function strikethrough(s) {
   return s.replace(/[^\u0300-\u036f]/g, (c) => c + "\u0336");
 }
-function originLabel(o, snapshotDate) {
-  switch (o) {
-    case "bailian-live":
-      return "\u767E\u70BC\u5B9E\u65F6\u63A5\u53E3";
-    case "bailian-cli":
-      return "\u672C\u673A bl CLI";
-    case "bailian-snapshot":
-      return "\u767E\u70BC\u5FEB\u7167" + (snapshotDate ? ` ${snapshotDate}` : "");
-    case "qoder-snapshot":
-      return "Qoder \u5FEB\u7167" + (snapshotDate ? ` ${snapshotDate}` : "");
-  }
-}
 function windowCountdownText(start, end, now = /* @__PURE__ */ new Date()) {
   const w = windowState({ start, end }, now);
   return w.active ? `${fmtCountdown(w.minutesToNextBoundary)}\u540E\u7ED3\u675F\uFF08${end}\uFF09` : `${fmtCountdown(w.minutesToNextBoundary)}\u540E\u5F00\u59CB\uFF08${start}\uFF09`;
@@ -120,10 +104,160 @@ function homeSummaryLine(st, now = /* @__PURE__ */ new Date()) {
     const seg = starModel.regular && starModel.effective && starModel.regular !== starModel.effective ? `${starModel.model}\xD7${starModel.regular.replace("x", "")}/\xD7${starModel.effective.replace("x", "")}` : `${starModel.model}\xD7${(starModel.effective ?? starModel.regular ?? "").replace("x", "")}`;
     parts.push(seg);
   }
-  const remain = new Date(w.nextBoundaryAt).getTime() - now.getTime();
-  parts.push(`${w.activeNow ? "\u8DDD\u7ED3\u675F" : "\u8DDD\u5F00\u59CB"} ${fmtShortDur(remain)}`);
+  const ws = windowState(w, now);
+  parts.push(`${ws.active ? "\u8DDD\u7ED3\u675F" : "\u8DDD\u5F00\u59CB"} ${fmtShortDur(ws.nextBoundaryAtMs - now.getTime())}`);
   parts.push(sourceBadgeLine(st));
   return parts.join(" \xB7 ");
+}
+
+// src/core/bailian-snapshot.ts
+var CREDITS_PER_YUAN = 250;
+var BAILIAN_SNAPSHOT_AT = "2026-08-30";
+var TOKEN_PLAN_TEXT_MODELS = [
+  "qwen3.8-max",
+  "qwen3.8-flash",
+  "qwen3.7-max",
+  "qwen3.7-plus",
+  "qwen3.6-plus",
+  "qwen3.6-flash",
+  "glm-5.2",
+  "deepseek-v4-pro-0813"
+];
+var BAILIAN_WINDOW_RULES = [
+  {
+    id: "night-qwen38-max",
+    label: "Token Plan \u591C\u95F4\u4E94\u6298",
+    models: ["qwen3.8-max"],
+    factor: 0.5,
+    start: "22:00",
+    end: "08:00",
+    source: "\u5B98\u65B9\u6587\u6863 \xB7 Token Plan\uFF08\u4E2A\u4EBA\u7248\uFF09\u6982\u8FF0"
+  },
+  {
+    id: "night-deepseek-v4-pro",
+    label: "Token Plan \u591C\u95F4\u4E94\u6298",
+    models: ["deepseek-v4-pro-0813"],
+    factor: 0.5,
+    start: "22:00",
+    end: "08:00",
+    source: "\u5B98\u65B9\u6587\u6863 \xB7 Token Plan\uFF08\u4E2A\u4EBA\u7248\uFF09\u6982\u8FF0"
+  }
+];
+function bailianSnapshotModels() {
+  const P = (name, type, price, unit = "\u6BCF\u767E\u4E07tokens", band, discount) => ({ name, type, price, unit, ...band ? { band } : {}, ...discount !== void 0 ? { discount } : {} });
+  return [
+    {
+      family: "qwen3.8-max",
+      model: "qwen3.8-max",
+      provider: "qwen",
+      context: 1e6,
+      prices: [P("\u8F93\u5165", "input_token", 12), P("\u8F93\u51FA", "output_token", 36), P("\u8F93\u5165\uFF08\u7F13\u5B58\u547D\u4E2D\uFF09", "input_token_cache", 1.5), P("\u8F93\u5165\uFF08Batch Chat\uFF09", "input_token_batch_chat", 12, "\u6BCF\u767E\u4E07tokens", void 0, 0.5), P("\u8F93\u51FA\uFF08Batch Chat\uFF09", "output_token_batch_chat", 36, "\u6BCF\u767E\u4E07tokens", void 0, 0.5)]
+    },
+    {
+      family: "qwen3.8-flash",
+      model: "qwen3.8-flash",
+      provider: "qwen",
+      context: 1e6,
+      prices: [P("\u8F93\u5165", "input_token", 0.8), P("\u8F93\u51FA", "output_token", 2.7), P("\u8F93\u5165\uFF08\u7F13\u5B58\u547D\u4E2D\uFF09", "input_token_cache", 0.1)]
+    },
+    {
+      family: "qwen3.7-max",
+      model: "qwen3.7-max",
+      provider: "qwen",
+      context: 1e6,
+      prices: [P("\u8F93\u5165", "input_token", 12), P("\u8F93\u51FA", "output_token", 36), P("\u8F93\u5165\uFF08\u7F13\u5B58\u547D\u4E2D\uFF09", "input_token_cache", 2.4), P("\u8F93\u5165", "input_token", 12, "\u6BCF\u767E\u4E07tokens", "standard", 0.5)]
+    },
+    {
+      family: "qwen3.6-plus",
+      model: "qwen3.6-plus",
+      provider: "qwen",
+      context: 1e6,
+      prices: [P("\u8F93\u5165", "input_token", 0.8), P("\u8F93\u51FA", "output_token", 4.8), P("\u8F93\u5165\uFF08\u7F13\u5B58\u547D\u4E2D\uFF09", "input_token_cache", 0.08)]
+    },
+    {
+      family: "deepseek",
+      model: "deepseek-v4-pro-0813",
+      provider: "deepseek",
+      context: 1e6,
+      prices: [P("\u8F93\u5165", "input_token", 9, "\u6BCF\u767E\u4E07tokens", "peak"), P("\u8F93\u5165", "input_token", 4.5, "\u6BCF\u767E\u4E07tokens", "offpeak"), P("\u8F93\u51FA", "output_token", 27, "\u6BCF\u767E\u4E07tokens", "peak"), P("\u8F93\u51FA", "output_token", 13.5, "\u6BCF\u767E\u4E07tokens", "offpeak"), P("\u8F93\u5165\uFF08\u7F13\u5B58\u547D\u4E2D\uFF09", "input_token_cache", 0.9, "\u6BCF\u767E\u4E07tokens", "peak"), P("\u8F93\u5165\uFF08\u7F13\u5B58\u547D\u4E2D\uFF09", "input_token_cache", 0.45, "\u6BCF\u767E\u4E07tokens", "offpeak")]
+    },
+    {
+      family: "deepseek",
+      model: "deepseek-v4-pro",
+      provider: "deepseek",
+      context: 1e6,
+      prices: [P("\u8F93\u5165", "input_token", 12), P("\u8F93\u51FA", "output_token", 24), P("\u8F93\u5165\uFF08\u7F13\u5B58\u547D\u4E2D\uFF09", "input_token_cache", 1)]
+    },
+    {
+      family: "glm-5.2",
+      model: "glm-5.2",
+      provider: "zhipu",
+      context: 2e5,
+      prices: [P("\u8F93\u5165", "input_token", 8), P("\u8F93\u51FA", "output_token", 28), P("\u8F93\u5165\uFF08\u7F13\u5B58\u547D\u4E2D\uFF09", "input_token_cache", 2)]
+    },
+    {
+      family: "wan-video",
+      model: "wan-video",
+      provider: "wan",
+      prices: [P("\u89C6\u9891\u751F\u6210\uFF08480P\uFF09", "video_ratio_480p", 0.45, "\u6BCF\u79D2"), P("\u89C6\u9891\u751F\u6210\uFF08720P\uFF09", "video_ratio_720p", 0.9, "\u6BCF\u79D2"), P("\u89C6\u9891\u751F\u6210\uFF081080P\uFF09", "video_ratio_1080p", 1.8, "\u6BCF\u79D2"), P("\u89C6\u9891\u751F\u6210\uFF08720P\xB7\u9650\u65F6\uFF09", "video_ratio_720p", 0.6, "\u6BCF\u79D2", void 0, 0.7)]
+    },
+    {
+      family: "qwen-image",
+      model: "qwen-image",
+      provider: "qwen",
+      prices: [P("\u56FE\u7247\u751F\u6210", "image_number", 0.25, "\u6BCF\u5F20")]
+    },
+    {
+      family: "qwen-image-plus",
+      model: "qwen-image-plus",
+      provider: "qwen",
+      prices: [P("\u56FE\u7247\u751F\u6210", "image_number", 0.2, "\u6BCF\u5F20")]
+    }
+  ];
+}
+function parseGroups(list) {
+  const out = [];
+  const byName = /* @__PURE__ */ new Set();
+  for (const g of list || []) {
+    const items = Array.isArray(g.items) && g.items.length ? g.items : [g];
+    for (const it of items) {
+      const model = String(it.model || "");
+      if (!model) continue;
+      const m = model.match(/^(.*)-\d{4}-\d{2}-\d{2}$/);
+      if (m && byName.has(m[1])) continue;
+      const prices = [];
+      const mp = Array.isArray(it.multiPrices) ? it.multiPrices : [];
+      if (mp.length) {
+        for (const range of mp) {
+          for (const p of range.prices || []) {
+            prices.push({
+              name: p.priceName ?? p.type ?? "",
+              type: p.type ?? "",
+              price: Number(p.price),
+              unit: p.priceUnit ?? "",
+              ...p.timeBand ? { band: p.timeBand } : {},
+              ...p.discount !== void 0 && p.discount !== null ? { discount: Number(p.discount) } : {},
+              ...range.rangeName ? { range: range.rangeName } : {}
+            });
+          }
+        }
+      } else if (Array.isArray(it.prices)) {
+        for (const p of it.prices) {
+          prices.push({
+            name: p.priceName ?? p.type ?? "",
+            type: p.type ?? "",
+            price: Number(p.price),
+            unit: p.priceUnit ?? "",
+            ...p.timeBand ? { band: p.timeBand } : {},
+            ...p.discount !== void 0 && p.discount !== null ? { discount: Number(p.discount) } : {}
+          });
+        }
+      }
+      byName.add(model);
+      out.push({ family: model, model, provider: it.provider ?? g.provider ?? "", context: it.contextWindow, prices });
+    }
+  }
+  return out;
 }
 
 // src/core/merge.ts
@@ -166,9 +300,13 @@ function catalogToOffers(models, origin, snapshotDate) {
       ...snapshotDate ? { snapshotDate } : {}
     });
   }
+  const windowedModels = /* @__PURE__ */ new Set([
+    ...out.filter((o) => o.kind === "time-window").flatMap((o) => o.models.map((m) => m.toLowerCase())),
+    ...BAILIAN_WINDOW_RULES.flatMap((r) => r.models.map((m) => m.toLowerCase()))
+  ]);
   for (const m of models) {
     const model = m.model.toLowerCase();
-    if (offpeakModels.includes(model)) continue;
+    if (windowedModels.has(model)) continue;
     const std = m.prices.find((p) => p.type === "input_token" && p.discount !== void 0 && p.discount < 1);
     const modelFactor = std?.discount;
     const batchEntry = m.prices.find((p) => /batch/i.test(p.type) && p.discount !== void 0 && p.discount < 1);
@@ -196,9 +334,20 @@ function catalogToOffers(models, origin, snapshotDate) {
 function mergeKey(r) {
   return [r.kind, r.unit, r.window ? `${r.window.start}-${r.window.end}@${r.window.tz}` : "-", r.factor ?? "-", r.baseFactor ?? "-", [...r.models].sort().join(",")].join("|");
 }
+function explodePerModel(rules) {
+  const out = [];
+  for (const r of rules) {
+    if (r.models.length <= 1) {
+      out.push(r);
+      continue;
+    }
+    for (const m of new Set(r.models)) out.push({ ...r, id: `${r.id}#${m}`, models: [m] });
+  }
+  return out;
+}
 function mergeOffers(all) {
   const byKey = /* @__PURE__ */ new Map();
-  for (const r of all) {
+  for (const r of explodePerModel(all)) {
     const k = mergeKey(r);
     const prev = byKey.get(k);
     if (!prev) {
@@ -367,156 +516,6 @@ var QODER_INSALE_FACTORS = {
   "minimax-m2.7": { factor: 0.2 }
 };
 
-// src/core/bailian-snapshot.ts
-var CREDITS_PER_YUAN = 250;
-var BAILIAN_SNAPSHOT_AT = "2026-08-30";
-var TOKEN_PLAN_TEXT_MODELS = [
-  "qwen3.8-max",
-  "qwen3.8-flash",
-  "qwen3.7-max",
-  "qwen3.7-plus",
-  "qwen3.6-plus",
-  "qwen3.6-flash",
-  "glm-5.2",
-  "deepseek-v4-pro-0813"
-];
-var BAILIAN_WINDOW_RULES = [
-  {
-    id: "night-qwen38-max",
-    label: "Token Plan \u591C\u95F4\u4E94\u6298",
-    models: ["qwen3.8-max"],
-    factor: 0.5,
-    start: "22:00",
-    end: "08:00",
-    source: "\u5B98\u65B9\u6587\u6863 \xB7 Token Plan\uFF08\u4E2A\u4EBA\u7248\uFF09\u6982\u8FF0"
-  },
-  {
-    id: "night-deepseek-v4-pro",
-    label: "Token Plan \u591C\u95F4\u4E94\u6298",
-    models: ["deepseek-v4-pro-0813"],
-    factor: 0.5,
-    start: "22:00",
-    end: "08:00",
-    source: "\u5B98\u65B9\u6587\u6863 \xB7 Token Plan\uFF08\u4E2A\u4EBA\u7248\uFF09\u6982\u8FF0"
-  }
-];
-function bailianSnapshotModels() {
-  const P = (name, type, price, unit = "\u6BCF\u767E\u4E07tokens", band, discount) => ({ name, type, price, unit, ...band ? { band } : {}, ...discount !== void 0 ? { discount } : {} });
-  return [
-    {
-      family: "qwen3.8-max",
-      model: "qwen3.8-max",
-      provider: "qwen",
-      context: 1e6,
-      prices: [P("\u8F93\u5165", "input_token", 12), P("\u8F93\u51FA", "output_token", 36), P("\u8F93\u5165\uFF08\u7F13\u5B58\u547D\u4E2D\uFF09", "input_token_cache", 1.5), P("\u8F93\u5165\uFF08Batch Chat\uFF09", "input_token_batch_chat", 12, "\u6BCF\u767E\u4E07tokens", void 0, 0.5), P("\u8F93\u51FA\uFF08Batch Chat\uFF09", "output_token_batch_chat", 36, "\u6BCF\u767E\u4E07tokens", void 0, 0.5)]
-    },
-    {
-      family: "qwen3.8-flash",
-      model: "qwen3.8-flash",
-      provider: "qwen",
-      context: 1e6,
-      prices: [P("\u8F93\u5165", "input_token", 0.8), P("\u8F93\u51FA", "output_token", 2.7), P("\u8F93\u5165\uFF08\u7F13\u5B58\u547D\u4E2D\uFF09", "input_token_cache", 0.1)]
-    },
-    {
-      family: "qwen3.7-max",
-      model: "qwen3.7-max",
-      provider: "qwen",
-      context: 1e6,
-      prices: [P("\u8F93\u5165", "input_token", 12), P("\u8F93\u51FA", "output_token", 36), P("\u8F93\u5165\uFF08\u7F13\u5B58\u547D\u4E2D\uFF09", "input_token_cache", 2.4), P("\u8F93\u5165", "input_token", 12, "\u6BCF\u767E\u4E07tokens", "standard", 0.5)]
-    },
-    {
-      family: "qwen3.6-plus",
-      model: "qwen3.6-plus",
-      provider: "qwen",
-      context: 1e6,
-      prices: [P("\u8F93\u5165", "input_token", 0.8), P("\u8F93\u51FA", "output_token", 4.8), P("\u8F93\u5165\uFF08\u7F13\u5B58\u547D\u4E2D\uFF09", "input_token_cache", 0.08)]
-    },
-    {
-      family: "deepseek",
-      model: "deepseek-v4-pro-0813",
-      provider: "deepseek",
-      context: 1e6,
-      prices: [P("\u8F93\u5165", "input_token", 9, "\u6BCF\u767E\u4E07tokens", "peak"), P("\u8F93\u5165", "input_token", 4.5, "\u6BCF\u767E\u4E07tokens", "offpeak"), P("\u8F93\u51FA", "output_token", 27, "\u6BCF\u767E\u4E07tokens", "peak"), P("\u8F93\u51FA", "output_token", 13.5, "\u6BCF\u767E\u4E07tokens", "offpeak"), P("\u8F93\u5165\uFF08\u7F13\u5B58\u547D\u4E2D\uFF09", "input_token_cache", 0.9, "\u6BCF\u767E\u4E07tokens", "peak"), P("\u8F93\u5165\uFF08\u7F13\u5B58\u547D\u4E2D\uFF09", "input_token_cache", 0.45, "\u6BCF\u767E\u4E07tokens", "offpeak")]
-    },
-    {
-      family: "deepseek",
-      model: "deepseek-v4-pro",
-      provider: "deepseek",
-      context: 1e6,
-      prices: [P("\u8F93\u5165", "input_token", 12), P("\u8F93\u51FA", "output_token", 24), P("\u8F93\u5165\uFF08\u7F13\u5B58\u547D\u4E2D\uFF09", "input_token_cache", 1)]
-    },
-    {
-      family: "glm-5.2",
-      model: "glm-5.2",
-      provider: "zhipu",
-      context: 2e5,
-      prices: [P("\u8F93\u5165", "input_token", 8), P("\u8F93\u51FA", "output_token", 28), P("\u8F93\u5165\uFF08\u7F13\u5B58\u547D\u4E2D\uFF09", "input_token_cache", 2)]
-    },
-    {
-      family: "wan-video",
-      model: "wan-video",
-      provider: "wan",
-      prices: [P("\u89C6\u9891\u751F\u6210\uFF08480P\uFF09", "video_ratio_480p", 0.45, "\u6BCF\u79D2"), P("\u89C6\u9891\u751F\u6210\uFF08720P\uFF09", "video_ratio_720p", 0.9, "\u6BCF\u79D2"), P("\u89C6\u9891\u751F\u6210\uFF081080P\uFF09", "video_ratio_1080p", 1.8, "\u6BCF\u79D2"), P("\u89C6\u9891\u751F\u6210\uFF08720P\xB7\u9650\u65F6\uFF09", "video_ratio_720p", 0.6, "\u6BCF\u79D2", void 0, 0.7)]
-    },
-    {
-      family: "qwen-image",
-      model: "qwen-image",
-      provider: "qwen",
-      prices: [P("\u56FE\u7247\u751F\u6210", "image_number", 0.25, "\u6BCF\u5F20")]
-    },
-    {
-      family: "qwen-image-plus",
-      model: "qwen-image-plus",
-      provider: "qwen",
-      prices: [P("\u56FE\u7247\u751F\u6210", "image_number", 0.2, "\u6BCF\u5F20")]
-    }
-  ];
-}
-function parseGroups(list) {
-  const out = [];
-  const byName = /* @__PURE__ */ new Set();
-  for (const g of list || []) {
-    const items = Array.isArray(g.items) && g.items.length ? g.items : [g];
-    for (const it of items) {
-      const model = String(it.model || "");
-      if (!model) continue;
-      const m = model.match(/^(.*)-\d{4}-\d{2}-\d{2}$/);
-      if (m && byName.has(m[1])) continue;
-      const prices = [];
-      const mp = Array.isArray(it.multiPrices) ? it.multiPrices : [];
-      if (mp.length) {
-        for (const range of mp) {
-          for (const p of range.prices || []) {
-            prices.push({
-              name: p.priceName ?? p.type ?? "",
-              type: p.type ?? "",
-              price: Number(p.price),
-              unit: p.priceUnit ?? "",
-              ...p.timeBand ? { band: p.timeBand } : {},
-              ...p.discount !== void 0 && p.discount !== null ? { discount: Number(p.discount) } : {},
-              ...range.rangeName ? { range: range.rangeName } : {}
-            });
-          }
-        }
-      } else if (Array.isArray(it.prices)) {
-        for (const p of it.prices) {
-          prices.push({
-            name: p.priceName ?? p.type ?? "",
-            type: p.type ?? "",
-            price: Number(p.price),
-            unit: p.priceUnit ?? "",
-            ...p.timeBand ? { band: p.timeBand } : {},
-            ...p.discount !== void 0 && p.discount !== null ? { discount: Number(p.discount) } : {}
-          });
-        }
-      }
-      byName.add(model);
-      out.push({ family: model, model, provider: it.provider ?? g.provider ?? "", context: it.contextWindow, prices });
-    }
-  }
-  return out;
-}
-
 // src/core/status.ts
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -529,9 +528,8 @@ var CATALOG_ORIGIN = {
   snapshot: "bailian-snapshot"
 };
 function windowId(start, end) {
-  const sh = (hm) => String(parseHm(hm) / 60 | 0).padStart(2, "0");
   if (start === "22:00" && end === "08:00") return "offpeak-22-08";
-  return `win-${sh(start)}-${sh(end)}`;
+  return `win-${start.replace(":", "")}-${end.replace(":", "")}`;
 }
 function buildOffers(catalog) {
   const origin = CATALOG_ORIGIN[catalog.source] ?? "bailian-snapshot";
@@ -545,7 +543,7 @@ function buildOffers(catalog) {
     window: { start: r.start, end: r.end, tz: "Asia/Shanghai" },
     note: r.source,
     links: [],
-    origins: [origin],
+    origins: ["bailian-snapshot"],
     snapshotDate: BAILIAN_SNAPSHOT_AT
   }));
   return mergeOffers([...qoderSnapshotOffers(), ...legacy, ...catalogToOffers(catalog.models, origin, catalog.fetchedAt?.slice(0, 10))]);
@@ -611,16 +609,25 @@ function buildDiscounts(offers) {
   }
   const out = [];
   for (const [model, applies] of byModel) {
-    const best = applies.find((r) => r.factor !== void 0);
+    const bestFactors = {};
+    for (const r of applies) {
+      if (r.factor === void 0) continue;
+      const cur = bestFactors[r.unit];
+      if (cur === void 0 || r.factor < cur) bestFactors[r.unit] = r.factor;
+    }
     out.push({
       model,
       applies,
-      ...best?.factor !== void 0 ? { bestFactor: best.factor, bestRuleId: best.id } : {}
+      ...Object.keys(bestFactors).length ? { bestFactors } : {}
     });
   }
+  const lowest = (d) => {
+    const vs = Object.values(d.bestFactors ?? {});
+    return vs.length ? Math.min(...vs) : 1;
+  };
   const seriesOrder = (n) => /^qwen/.test(n) ? 0 : /^(deepseek|glm|kimi|minimax)/.test(n) ? 1 : 2;
   out.sort((a, b) => {
-    const fa = a.bestFactor ?? 1, fb = b.bestFactor ?? 1;
+    const fa = lowest(a), fb = lowest(b);
     if (fa !== fb) return fa - fb;
     const sd = seriesOrder(a.model) - seriesOrder(b.model);
     if (sd) return sd;
@@ -812,7 +819,7 @@ function loadConfig() {
     const raw = parseJsonc(fs.readFileSync(configFilePath(), "utf8"));
     if (raw && typeof raw === "object") {
       if (raw.webpanel?.enabled !== void 0) d.webpanel.enabled = !!raw.webpanel.enabled;
-      if (Number.isInteger(raw.webpanel?.port)) d.webpanel.port = raw.webpanel.port;
+      if (Number.isInteger(raw.webpanel?.port) && raw.webpanel.port >= 1024 && raw.webpanel.port <= 65535) d.webpanel.port = raw.webpanel.port;
       if (Number.isInteger(raw.sidebar?.order)) d.sidebar.order = raw.sidebar.order;
       if (raw.sidebar?.showNonTokenPlan !== void 0) d.sidebar.showNonTokenPlan = !!raw.sidebar.showNonTokenPlan;
       if (raw.toast !== void 0) d.toast = !!raw.toast;
@@ -889,7 +896,6 @@ export {
   legacyPortFile,
   loadConfig,
   mergeOffers,
-  originLabel,
   originRank,
   parseGroups,
   parseHm,
@@ -900,13 +906,13 @@ export {
   ruleWindow,
   shanghaiISO,
   shanghaiMinutes,
-  shanghaiMsOfDay,
   showStrike,
   sourceBadgeLine,
   stateDir,
   statusFilePath,
   strikethrough,
   windowCountdownText,
+  windowId,
   windowState,
   writeStatusAtomic
 };

@@ -1,8 +1,10 @@
 // 统一优惠模型合并（03-D2）：别名归一 → 目录→Offer 转换 → 去重合并 → 优先级排序。
-// 两套单位永不互算：credits-factor(Qoder Credits 倍率) 与 cny-price(百炼分时单价/discount)
-// 各居其 facet；仅当 (kind, models, 窗口, factor, unit) 全等才合并（origins 并集=双源印证）。
+// 两套单位永不互算：credits-factor(Qoder Credits 倍率) 与 cny-price(百炼 ¥ 价格倍率)
+// 各居其 facet；合并前多 model 规则拆 per-model（m1），仅当 (kind, model, 窗口, factor, unit)
+// 全等才合并（origins 并集=双源印证）。
 
 import type { ModelEntry, OfferOrigin, OfferRule } from "./types";
+import { BAILIAN_WINDOW_RULES } from "./bailian-snapshot";
 
 /** 契约 §1 别名表：Qoder 生态内 alias → canonical（仅同生态精确字符串匹配）。 */
 export const MODEL_ALIASES: Record<string, string> = {
@@ -56,9 +58,15 @@ export function catalogToOffers(models: ModelEntry[], origin: OfferOrigin, snaps
       ...(snapshotDate ? { snapshotDate } : {}),
     });
   }
+  // m2：跳过集 = 模型已存在任一 time-window offer（目录 offpeak 档产出的 catalog-offpeak
+  // ∪ 官方文档窗口规则 BAILIAN_WINDOW_RULES）→ 保住旧 428 行「窗口/限时互斥」语义，不漂移。
+  const windowedModels = new Set<string>([
+    ...out.filter((o) => o.kind === "time-window").flatMap((o) => o.models.map((m) => m.toLowerCase())),
+    ...BAILIAN_WINDOW_RULES.flatMap((r) => r.models.map((m) => m.toLowerCase())),
+  ]);
   for (const m of models) {
     const model = m.model.toLowerCase();
-    if (offpeakModels.includes(model)) continue; // 窗口型与限时型互斥（沿用旧 buildStatus 语义）
+    if (windowedModels.has(model)) continue; // 已有 time-window offer → 不再出限时型
     const std = m.prices.find((p) => p.type === "input_token" && p.discount !== undefined && p.discount < 1);
     const modelFactor = std?.discount;
     const batchEntry = m.prices.find((p) => /batch/i.test(p.type) && p.discount !== undefined && p.discount < 1);
@@ -91,10 +99,20 @@ function mergeKey(r: OfferRule): string {
   return [r.kind, r.unit, (r.window ? `${r.window.start}-${r.window.end}@${r.window.tz}` : "-"), r.factor ?? "-", r.baseFactor ?? "-", [...r.models].sort().join(",")].join("|");
 }
 
-/** 去重合并 + 优先级排序。同 key → origins/links 并集（双源印证行）。 */
+/** m1：多 model 规则拆成 per-model 行再合并（id 加 `#model` 后缀）；≤1 model（含 notices 空集）原样。 */
+function explodePerModel(rules: OfferRule[]): OfferRule[] {
+  const out: OfferRule[] = [];
+  for (const r of rules) {
+    if (r.models.length <= 1) { out.push(r); continue; }
+    for (const m of new Set(r.models)) out.push({ ...r, id: `${r.id}#${m}`, models: [m] });
+  }
+  return out;
+}
+
+/** 去重合并 + 优先级排序。同 key（per-model 全等）→ origins/links 并集（双源印证行）。 */
 export function mergeOffers(all: OfferRule[]): OfferRule[] {
   const byKey = new Map<string, OfferRule>();
-  for (const r of all) {
+  for (const r of explodePerModel(all)) {
     const k = mergeKey(r);
     const prev = byKey.get(k);
     if (!prev) {

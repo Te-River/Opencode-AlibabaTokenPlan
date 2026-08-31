@@ -1,10 +1,10 @@
 // buildStatus —— 纯函数（03-D1：`buildStatus(catalog, now)`），输出即 status.json payload。
 
-import type { CatalogSource, DiscountEntry, ModelEntry, OfferOrigin, OfferRule, StatusFile, WindowView } from "./types";
+import type { CatalogSource, DiscountEntry, ModelEntry, OfferOrigin, OfferRule, OfferUnit, StatusFile, WindowView } from "./types";
 import { CREDITS_PER_YUAN, TOKEN_PLAN_TEXT_MODELS, BAILIAN_WINDOW_RULES, BAILIAN_SNAPSHOT_AT } from "./bailian-snapshot";
 import { qoderSnapshotOffers, QODER_SNAPSHOT_DATE, QODER_INSALE_FACTORS } from "./qoder-snapshot";
 import { catalogToOffers, mergeOffers, isCrossVerified } from "./merge";
-import { windowState, parseHm, fmtCountdown } from "./rules";
+import { windowState, fmtCountdown } from "./rules";
 import { fmtFactor } from "./text";
 
 export const WRITTEN_BY = "@te-river/opencode-alibabatokenplan/server@0.1.0";
@@ -30,15 +30,17 @@ const CATALOG_ORIGIN: Record<CatalogSource, OfferOrigin> = {
   snapshot: "bailian-snapshot",
 };
 
-function windowId(start: string, end: string): string {
-  const sh = (hm: string) => String(parseHm(hm) / 60 | 0).padStart(2, "0");
+/** m5：id 保留 HHMM（去冒号），同小时不同分钟不再碰撞；offpeak 主窗沿用契约 §2 命名。 */
+export function windowId(start: string, end: string): string {
   if (start === "22:00" && end === "08:00") return "offpeak-22-08"; // 契约 §2 示例命名
-  return `win-${sh(start)}-${sh(end)}`;
+  return `win-${start.replace(":", "")}-${end.replace(":", "")}`;
 }
 
 /** 全部 OfferRule：Qoder 快照 ∪ 百炼文档窗口规则 ∪ 目录派生（合并去重+排序）。 */
 export function buildOffers(catalog: CatalogInput): OfferRule[] {
   const origin = CATALOG_ORIGIN[catalog.source] ?? "bailian-snapshot";
+  // m9：BAILIAN_WINDOW_RULES 是文档快照常量，来源恒标 bailian-snapshot——不随目录源
+  // （live/cli）抬升 originRank/双源判定；与目录同键行仍由 mergeOffers 做 origins 并集。
   const legacy: OfferRule[] = BAILIAN_WINDOW_RULES.map((r) => ({
     id: r.id,
     kind: "time-window" as const,
@@ -49,7 +51,7 @@ export function buildOffers(catalog: CatalogInput): OfferRule[] {
     window: { start: r.start, end: r.end, tz: "Asia/Shanghai" },
     note: r.source,
     links: [],
-    origins: [origin],
+    origins: ["bailian-snapshot" as const],
     snapshotDate: BAILIAN_SNAPSHOT_AT,
   }));
   return mergeOffers([...qoderSnapshotOffers(), ...legacy, ...catalogToOffers(catalog.models, origin, catalog.fetchedAt?.slice(0, 10))]);
@@ -115,17 +117,27 @@ function buildDiscounts(offers: OfferRule[]): DiscountEntry[] {
   }
   const out: DiscountEntry[] = [];
   for (const [model, applies] of byModel) {
-    const best = applies.find((r) => r.factor !== undefined);
+    // m3：按 unit 分桶各取数值最小——credits-factor 与 cny-price 跨单位比大小无意义
+    const bestFactors: Partial<Record<OfferUnit, number>> = {};
+    for (const r of applies) {
+      if (r.factor === undefined) continue;
+      const cur = bestFactors[r.unit];
+      if (cur === undefined || r.factor < cur) bestFactors[r.unit] = r.factor;
+    }
     out.push({
       model,
       applies,
-      ...(best?.factor !== undefined ? { bestFactor: best.factor, bestRuleId: best.id } : {}),
+      ...(Object.keys(bestFactors).length ? { bestFactors } : {}),
     });
   }
-  // 与 offers 合并序一致：价低先、系列序（qwen→deepseek/glm→其他）沿用旧排序精神
+  // 与 offers 合并序一致：价低先（取各 unit 桶最小值中的最小作为展示序）、系列序（qwen→deepseek/glm→其他）沿用旧排序精神
+  const lowest = (d: DiscountEntry) => {
+    const vs = Object.values(d.bestFactors ?? {});
+    return vs.length ? Math.min(...vs) : 1;
+  };
   const seriesOrder = (n: string) => (/^qwen/.test(n) ? 0 : /^(deepseek|glm|kimi|minimax)/.test(n) ? 1 : 2);
   out.sort((a, b) => {
-    const fa = a.bestFactor ?? 1, fb = b.bestFactor ?? 1;
+    const fa = lowest(a), fb = lowest(b);
     if (fa !== fb) return fa - fb;
     const sd = seriesOrder(a.model) - seriesOrder(b.model);
     if (sd) return sd;
@@ -337,7 +349,8 @@ export function loadConfig(): AtpConfig {
     const raw = parseJsonc(fs.readFileSync(configFilePath(), "utf8")) as any;
     if (raw && typeof raw === "object") {
       if (raw.webpanel?.enabled !== undefined) d.webpanel.enabled = !!raw.webpanel.enabled;
-      if (Number.isInteger(raw.webpanel?.port)) d.webpanel.port = raw.webpanel.port;
+      // Nit: 端口须落在可绑定的非特权区间 [1024,65535]，否则回退默认（避免 bind EACCES/无效端口）
+      if (Number.isInteger(raw.webpanel?.port) && raw.webpanel.port >= 1024 && raw.webpanel.port <= 65535) d.webpanel.port = raw.webpanel.port;
       if (Number.isInteger(raw.sidebar?.order)) d.sidebar.order = raw.sidebar.order;
       if (raw.sidebar?.showNonTokenPlan !== undefined) d.sidebar.showNonTokenPlan = !!raw.sidebar.showNonTokenPlan;
       if (raw.toast !== undefined) d.toast = !!raw.toast;
