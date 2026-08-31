@@ -1,0 +1,79 @@
+{
+  "name": "@te-river/opencode-alibabatokenplan",
+  "version": "0.1.0",
+  "description": "Opencode server+TUI plugin: Aliyun Bailian Token Plan discount radar (live gateway / bl CLI / snapshot + Qoder static snapshot) persisted to status.json, shown in sidebar/home with countdown, tools and toasts.",
+  "type": "module",
+  "main": "./dist/server.js",
+  "exports": {
+    ".": {
+      "default": "./dist/server.js"
+    },
+    "./server": {
+      "default": "./dist/server.js"
+    },
+    "./tui": {
+      "default": "./dist/tui.js"
+    }
+  },
+  "oc-plugin": [
+    "server",
+    "tui"
+  ],
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node scripts/test.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "publish:check": "npm run build && npm test && npm pack --dry-run"
+  },
+  "keywords": [
+    "opencode",
+    "plugin",
+    "bailian",
+    "token-plan",
+    "discount",
+    "qoder",
+    "toast"
+  ],
+  "author": "te-river",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/te-river/opencode-alibabatokenplan.git"
+  },
+  "bugs": {
+    "url": "https://github.com/te-river/opencode-alibabatokenplan/issues"
+  },
+  "homepage": "https://github.com/te-river/opencode-alibabatokenplan#readme",
+  "dependencies": {
+    "@opentui/core": "0.4.5",
+    "@opentui/solid": "0.4.5",
+    "solid-js": "^1.9.12"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "1.18.24",
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.7.0"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": "^1.4.3"
+  },
+  "peerDependenciesMeta": {
+    "@opencode-ai/plugin": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

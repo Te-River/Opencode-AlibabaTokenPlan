@@ -1,0 +1,4 @@
+# dist is a PUBLISHED artifact (host loads prebuilt dist/*.js) — intentionally NOT ignored
+node_modules/
+*.log
+.tmp/

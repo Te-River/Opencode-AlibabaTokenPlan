@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Token Plan 优惠雷达</title>
+<style>
+  :root{
+    --bg0:#090b11;--bg1:#0f131c;--card:rgba(21,26,37,.66);--line:rgba(148,163,199,.10);
+    --tx:#e8ecf4;--dim:#7e8798;--faint:#565e70;
+    --ok:#34d399;--warn:#fbbf24;--hot:#f87171;--accent:#7aa2ff;
+    --mono:ui-monospace,"Cascadia Mono",Consolas,"SF Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  html{scrollbar-gutter:stable}
+  body{
+    margin:0;padding:16px 14px 20px;min-height:100vh;color:var(--tx);
+    font:13px/1.5 "Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+    background:radial-gradient(900px 420px at 85% -180px,rgba(99,102,241,.16),transparent 62%),
+               radial-gradient(700px 380px at -10% 8%,rgba(52,211,153,.07),transparent 55%),
+               linear-gradient(180deg,var(--bg0),var(--bg1));
+    background-attachment:fixed;
+  }
+  ::-webkit-scrollbar{width:8px}::-webkit-scrollbar-thumb{background:rgba(148,163,199,.16);border-radius:99px}
+  h1{font-size:15px;margin:0;font-weight:650;letter-spacing:.2px}
+  .sub{color:var(--dim);font-size:11px}
+  .dot{width:7px;height:7px;border-radius:99px;background:var(--warn);box-shadow:0 0 8px currentColor;display:inline-block}
+  .dot.ok{background:var(--ok)} .dot.warn{background:var(--warn)}
+  .pulse{animation:pulse 2.4s ease-in-out infinite}@keyframes pulse{50%{opacity:.35}}
+  header{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+  header .grow{flex:1}
+  .pill{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:99px;padding:2px 9px;font-size:11px;color:var(--dim);background:rgba(255,255,255,.025);white-space:nowrap}
+  .pill b{color:var(--tx);font-weight:600}
+  .card{
+    position:relative;background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:14px;margin-bottom:12px;backdrop-filter:blur(6px);overflow:hidden;
+  }
+  .card::before{content:"";position:absolute;inset:0 0 auto 0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.14),transparent)}
+  .hero{padding:16px}
+  .hero .top{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+  .hero .name{font-size:14px;font-weight:650}
+  .factor{font-family:var(--mono);font-weight:700;color:var(--hot);font-size:13px;
+    border:1px solid rgba(248,113,113,.35);background:rgba(248,113,113,.08);border-radius:8px;padding:1px 7px}
+  .cd{display:flex;align-items:baseline;gap:9px;margin:2px 0 4px}
+  .cd .num{font-family:var(--mono);font-size:38px;font-weight:700;letter-spacing:1px;line-height:1;
+    font-variant-numeric:tabular-nums;color:var(--tx)}
+  .cd.on .num{color:var(--ok);text-shadow:0 0 22px rgba(52,211,153,.35)}
+  .cd.off .num{color:#c7cfdf}
+  .cd .lbl{font-size:12px;color:var(--dim);margin-left:4px}
+  .cd .unit{font-size:13px;color:var(--dim);margin:0 10px 0 3px;font-weight:500}
+  .bar{height:4px;border-radius:99px;background:rgba(148,163,199,.14);margin:12px 0 10px;overflow:hidden}
+  .bar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,rgba(52,211,153,.55),var(--ok));transition:width 1s linear}
+  .meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .chip{border:1px solid var(--line);border-radius:99px;padding:2.5px 9px;color:var(--tx);background:rgba(255,255,255,.03);font-family:var(--mono);font-size:10.5px}
+  .chip s{color:var(--faint);margin-right:4px}
+  .chip em{color:var(--hot);font-style:normal;font-weight:600}
+  h2{font-size:11px;margin:16px 2px 8px;color:var(--dim);font-weight:600;letter-spacing:.6px}
+  .kv{display:flex;justify-content:space-between;gap:10px;padding:6px 10px;border-radius:8px;font-size:12px}
+  .kv:hover{background:rgba(255,255,255,.03)}
+  .kv .k{color:var(--dim);font-family:var(--mono);font-size:11.5px}
+  .kv .v{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .kv .v .d{color:var(--hot)}
+  .hint{color:var(--warn);font-size:11.5px;margin:8px 10px 4px}
+  .glab{font-size:10.5px;color:var(--faint);letter-spacing:.5px;padding:8px 10px 2px}
+  .foot{color:var(--faint);font-size:10.5px;margin-top:12px;line-height:1.7}
+  .dimv{color:var(--faint)}
+  .srcq{color:var(--accent)}
+  a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+</style></head><body>
+<header>
+  <span class="dot pulse" id="dot"></span>
+  <h1>Token Plan 优惠雷达</h1>
+  <span class="grow"></span>
+  <span class="pill" id="src"></span>
+</header>
+<div id="rules"></div>
+<h2 id="offerTitle">优惠明细</h2>
+<div class="card" style="padding:6px 4px"><div id="offers"></div></div>
+<h2>文本模型价目（Credits / 百万 tokens）</h2>
+<div class="card" style="padding:6px 4px"><div id="tms"></div></div>
+<div class="foot" id="foot"></div>
+<script>
+var base=null;
+function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
+function shMin(){var d=new Date();var cn=new Date(d.getTime()+(d.getTimezoneOffset()+480)*60000);return cn.getHours()*60+cn.getMinutes()+cn.getSeconds()/60}
+function parseHm(s){var p=s.split(":");return (+p[0])*60+(+p[1]||0)}
+function winState(s,e){var m=shMin();var wraps=s>e;var total=wraps?e+1440-s:e-s;var active=wraps?(m>=s||m<e):(m>=s&&m<e);var toNext;
+ if(active){toNext=wraps?(m>=s?e+1440-m:e-m):(e-m)}else{toNext=(m<s?s-m:s+1440-m)}
+ return{active:active,toNext:Math.max(0,toNext),total:total,pct:active?Math.round(100*(total-toNext)/total):0}}
+function durParts(mins){var m=Math.round(mins);var h=Math.floor(m/60);m=m%60;return{h:h,m:m}}
+function srcName(s){return{"bailian-live":"实时接口","bailian-cli":"本机 CLI","bailian-snapshot":"快照","qoder-snapshot":"Qoder 快照"}[s]||s}
+async function load(){try{var r=await fetch("/api/status");base=await r.json();render()}catch(e){document.getElementById("foot").textContent="加载失败: "+e}}
+function render(){
+ if(!base)return;
+ var anyOn=base.windows.some(function(w){var s=winState(parseHm(w.start),parseHm(w.end));return s.active});
+ document.getElementById("dot").className="dot pulse "+(anyOn?"ok":"warn");
+ document.getElementById("src").innerHTML='<b>'+esc(srcName(base.sources.catalog))+'</b> + <span class="srcq">Qoder快照 '+esc(base.sources.qoderSnapshot)+'</span> · '+
+  new Date(base.updatedAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",timeZone:"Asia/Shanghai"});
+ // ── 主卡：窗口 ──
+ var R=document.getElementById("rules");R.innerHTML="";
+ base.windows.forEach(function(w){
+  var s=winState(parseHm(w.start),parseHm(w.end));
+  var d=document.createElement("div");d.className="card hero";
+  var chips=w.models.map(function(m){
+    return '<span class="chip">'+esc(m.model)+(m.regular&&m.regular!==m.effective?' <s>'+esc(m.regular)+'</s>':'')+(m.effective?' <em>'+esc(m.effective)+'</em>':'')+'</span>';
+  }).join("");
+  d.innerHTML='<div class="top"><span class="dot '+(s.active?"ok":"warn")+' pulse"></span>'
+   +'<span class="name">'+esc(w.label)+'</span>'
+   +'<span class="grow" style="flex:1"></span><span class="sub">'+esc(w.start)+'–'+esc(w.end)+'（北京时间）</span></div>'
+   +'<div class="cd '+(s.active?"on":"off")+'"><span class="num">'+durParts(s.toNext).h+'</span><span class="unit">小时</span><span class="num">'+durParts(s.toNext).m+'</span><span class="unit">分</span>'
+   +'<span class="lbl">'+(s.active?"后结束 · 优惠进行中":"后开始")+'</span></div>'
+   +'<div class="bar"><i style="width:'+(s.active?s.pct:0)+'%"></i></div>'
+   +'<div class="meta">'+chips+'</div>';
+  R.appendChild(d);
+ });
+ // ── 优惠明细（两套单位各居其 facet） ──
+ var flat=base.offers.filter(function(r){return r.kind==="flat-cut"});
+ document.getElementById("offerTitle").textContent="限时优惠 · "+flat.length+" 项（Credits 倍率与 ¥ 价格倍率不互算）";
+ document.getElementById("offers").innerHTML=flat.length?flat.map(function(r){
+   var tags=(r.factor!==undefined?"×"+r.factor:"")+(r.batchStack!==undefined?" Batch叠加×"+r.batchStack:"");
+   return '<div class="kv"><span class="k">'+esc(r.models.join(", "))+'（'+esc(r.unit==="credits-factor"?"Qoder Credits":"百炼 ¥")+'）</span>'
+     +'<span class="v"><span class="d">'+esc(tags)+'</span> '+esc(r.label)+(r.origins.length>1?' <span class="srcq">[双源印证]</span>':"")+'</span></div>';
+ }).join(""):'<div class="dimv" style="padding:6px 10px;font-size:11.5px">当前没有限时优惠</div>';
+ // ── 文本模型 ──
+ document.getElementById("tms").innerHTML=base.textModels.map(function(m){
+   return '<div class="kv"><span class="k">'+esc(m.model)+(m.bands?'（'+esc(m.bands)+'）':"")+(m.creditsFactor?' · Qoder '+esc(m.creditsFactor):"")+'</span>'
+    +'<span class="v">输入 '+esc(m.input)+' / 缓存 '+esc(m.cache)+' / 输出 '+esc(m.output)
+    +(m.badge?' <span class="d">'+esc(m.badge.label)+' '+esc(m.badge.countdown)+"</span>":"")+'</span></div>';
+ }).join("");
+ // ── 页脚 ──
+ var notices=base.notices.map(function(n){return esc(n.text)+(n.expired?"（已过期）":"")+"　〔"+esc(n.source)+"〕"}).join("<br>");
+ document.getElementById("foot").innerHTML=
+  "1 元 = "+base.creditsPerYuan+" Credits（"+esc(base.creditsRateNote)+"）· 对话里可用 tokenplan_discounts 工具查询 · 折扣以控制台账单为准"
+  +(base.quota.available?"":"<br>"+esc(base.quota.hint||""))
+  +(notices?"<br>"+notices:"")
+  +(base.sources.error?"<br>数据源降级: "+esc(base.sources.error):"");
+}
+setInterval(load,30000);setInterval(render,1000);load();
+</script></body></html>
