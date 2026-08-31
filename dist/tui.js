@@ -389,10 +389,11 @@ function homeSummaryLine(st, now = /* @__PURE__ */ new Date()) {
 }
 
 // src/core/provider.ts
-var FAMILY_ID_RE = /^alibaba(?:-.*)?$/i;
+var FAMILY_ID_RE = /^alibaba(?:-.+)?$/i;
 var STRICT_ID_RE = /^alibaba-token-plan(?:-[a-z]+)*$/i;
 var STRICT_HOST_RE = /^token-plan(?:\.[a-z0-9-]+)*\.maas\.aliyuncs\.com$/i;
-var FAMILY_HOST_PREFIX_RE = /^(token-plan|coding)\./i;
+var FAMILY_MAAS_HOST_RE = /(?:^|\.)maas\.aliyuncs\.com$/i;
+var FAMILY_DASHSCOPE_HOST_RE = /(?:^|\.)dashscope(?:-[a-z]+)?\.aliyuncs\.com$/i;
 function hostOf(baseURL) {
   if (!baseURL) return "";
   try {
@@ -410,7 +411,7 @@ function matchProvider(providerID, baseURL, mode = "family") {
   }
   if (FAMILY_ID_RE.test(id)) return true;
   if (!host) return false;
-  return FAMILY_HOST_PREFIX_RE.test(host) || /(?:^|\.)maas\.aliyuncs\.com$/i.test(host) || /dashscope/i.test(host);
+  return FAMILY_MAAS_HOST_RE.test(host) || FAMILY_DASHSCOPE_HOST_RE.test(host);
 }
 function isProviderMatchMode(v) {
   return v === "family" || v === "strict";

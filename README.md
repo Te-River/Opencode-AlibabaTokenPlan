@@ -57,6 +57,7 @@ Opencode 双入口插件（server + TUI）：把阿里云百炼 **Token Plan 优
   "toast": true,                                     // 窗口边界翻转提醒（每窗口每日恰 2 次）
   "refresh": { "catalogMin": 10, "quotaMin": 5 },    // server 刷新周期（分钟）
   "providerMatch": "family"                          // TUI 门控：family=阿里系全家族（alibaba-cn 亦显示，默认）；strict=仅 token-plan 专属
+                                                     // 主机判定为完整域名锚定：仅 *.maas.aliyuncs.com / dashscope[-x].aliyuncs.com 及其子域命中，coding.net 等前缀撞车域不误判
 }
 ```
 

@@ -291,10 +291,19 @@ test("R2 matchProvider 判定表：family（默认放宽）vs strict（0.1.0 语
     ["anthropic", undefined, false, false], // 两模式皆假
     ["alibaba", undefined, true, false],
     ["custom", "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1", true, true], // host=token-plan 族
-    ["custom", "https://coding.ap-southeast-1.maas.aliyuncs.com/v1", true, false], // host=coding.*：family 真 strict 假
+    ["custom", "https://coding.ap-southeast-1.maas.aliyuncs.com/v1", true, false], // host=coding.*.maas：family 真 strict 假
+    ["custom", "https://coding.dashscope.aliyuncs.com/v1", true, false], // 真实 coding 域（02 报告）
+    ["custom", "https://coding-intl.dashscope.aliyuncs.com/v1", true, false], // 真实 coding-intl 域
     ["custom", "https://dashscope.aliyuncs.com/compatible-mode/v1", true, false], // dashscope 域：family 真
     ["custom", "https://dashscope-intl.aliyuncs.com/v1", true, false], // dashscope 变体域
     ["custom", "https://api.anthropic.com/v1", false, false], // 无关 host 两假
+    // r3 Major-2 负例：主机判定必须全域名锚定，前缀/子串撞车一律 false
+    ["custom", "https://coding.net/api", false, false], // "coding." 前缀撞车≠coding 端点
+    ["custom", "https://token-plan.evil.io/v1", false, false], // "token-plan." 前缀但非 maas.aliyuncs.com
+    ["custom", "https://x@coding.net/v1", false, false], // userinfo 伪饰，host 仍是 coding.net
+    ["custom", "https://evil-dashscope.aliyuncs.com.qq.com/v1", false, false], // 子串含 dashscope.aliyuncs.com 但结尾他域
+    ["custom", "https://mydashscope.somewhere.cn/v1", false, false], // dashscope 任意位置子串不认
+    ["alibabaxyz", undefined, false, false], // providerID 也须锚定，防前缀撞车
     [undefined, undefined, false, false], // 空输入
     ["", "not a url", false, false], // 坏 URL 静默按无 host
   ];
