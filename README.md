@@ -53,9 +53,10 @@ Opencode 双入口插件（server + TUI）：把阿里云百炼 **Token Plan 优
 ```jsonc
 {
   "webpanel": { "enabled": false, "port": 7777 },   // 本地 HTTP 面板（默认关；样式见随包 src/server/panel.html）
-  "sidebar": { "order": 160, "showNonTokenPlan": false }, // 非 Token Plan 会话默认整块隐藏；true=弱化一行
+  "sidebar": { "order": 160, "showNonTokenPlan": false }, // 非匹配会话默认整块隐藏；true=弱化一行
   "toast": true,                                     // 窗口边界翻转提醒（每窗口每日恰 2 次）
-  "refresh": { "catalogMin": 10, "quotaMin": 5 }     // server 刷新周期（分钟）
+  "refresh": { "catalogMin": 10, "quotaMin": 5 },    // server 刷新周期（分钟）
+  "providerMatch": "family"                          // TUI 门控：family=阿里系全家族（alibaba-cn 亦显示，默认）；strict=仅 token-plan 专属
 }
 ```
 
@@ -73,6 +74,11 @@ npm run publish:check
 ```
 
 ## Changelog
+
+### 0.1.1
+
+- **桌面端确定性命令**：`/tokenplan` 经 server 侧 `command.execute.before` 拦截，优惠摘要（窗口状态+倒计时、在卖倍率、限时优惠、来源与截至声明、时区）由插件直接写入当前会话转录（`ignored` 部分对用户可见、不进模型上下文），模型仅回一句确认——Opencode 桌面版（Electron，不渲染 TUI 插件层）从此可见；支持可选模型名过滤（`/tokenplan qwen3.8-max`）。hook 失败时回退旧「经 LLM 调工具」模板，不炸命令。
+- **门控放宽**：新增 `providerMatch` 配置（默认 `family`）——TUI sidebar/home_bottom 门控从「仅 token-plan 专属 provider/主机」放宽为「阿里系全家族」，provider=`alibaba-cn` 会话也显示；`strict` 保持 0.1.0 语义。桌面命令不受门控限制（显式调用总是可用，非阿里系供应商时输出行首注明）。
 
 ### 0.1.0（初版要点）
 

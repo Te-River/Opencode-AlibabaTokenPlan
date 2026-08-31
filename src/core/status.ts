@@ -6,8 +6,9 @@ import { qoderSnapshotOffers, QODER_SNAPSHOT_DATE, QODER_INSALE_FACTORS } from "
 import { catalogToOffers, mergeOffers, isCrossVerified } from "./merge";
 import { windowState, fmtCountdown } from "./rules";
 import { fmtFactor } from "./text";
+import { isProviderMatchMode, type ProviderMatchMode } from "./provider";
 
-export const WRITTEN_BY = "@te-river/opencode-alibabatokenplan/server@0.1.0";
+export const WRITTEN_BY = "@te-river/opencode-alibabatokenplan/server@0.1.1";
 export const STALE_AFTER_SEC = 600;
 
 export interface CatalogInput {
@@ -334,6 +335,8 @@ export interface AtpConfig {
   sidebar: { order: number; showNonTokenPlan: boolean };
   toast: boolean;
   refresh: { catalogMin: number; quotaMin: number };
+  /** R2：TUI 侧栏/home 门控模式。family=阿里系全家族（默认，alibaba-cn 会话也显示）；strict=0.1.0 的 token-plan 专属正则。 */
+  providerMatch: ProviderMatchMode;
 }
 
 export const DEFAULT_CONFIG: AtpConfig = {
@@ -341,6 +344,7 @@ export const DEFAULT_CONFIG: AtpConfig = {
   sidebar: { order: 160, showNonTokenPlan: false },
   toast: true,
   refresh: { catalogMin: 10, quotaMin: 5 },
+  providerMatch: "family",
 };
 
 export function loadConfig(): AtpConfig {
@@ -356,6 +360,7 @@ export function loadConfig(): AtpConfig {
       if (raw.toast !== undefined) d.toast = !!raw.toast;
       if (Number.isInteger(raw.refresh?.catalogMin) && raw.refresh.catalogMin > 0) d.refresh.catalogMin = raw.refresh.catalogMin;
       if (Number.isInteger(raw.refresh?.quotaMin) && raw.refresh.quotaMin > 0) d.refresh.quotaMin = raw.refresh.quotaMin;
+      if (isProviderMatchMode(raw.providerMatch)) d.providerMatch = raw.providerMatch; // 非法值→保持默认 family
     }
   } catch {
     /* 缺失/坏 JSON = 全默认（契约 §4） */

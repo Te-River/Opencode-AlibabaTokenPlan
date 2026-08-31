@@ -2,6 +2,7 @@
 // 本目录所有模块零 opencode 依赖，仅 node 内建。
 
 export * from "./types";
+export * from "./provider";
 export * from "./rules";
 export * from "./text";
 export * from "./merge";

@@ -1,3 +1,31 @@
+// src/core/provider.ts
+var FAMILY_ID_RE = /^alibaba(?:-.*)?$/i;
+var STRICT_ID_RE = /^alibaba-token-plan(?:-[a-z]+)*$/i;
+var STRICT_HOST_RE = /^token-plan(?:\.[a-z0-9-]+)*\.maas\.aliyuncs\.com$/i;
+var FAMILY_HOST_PREFIX_RE = /^(token-plan|coding)\./i;
+function hostOf(baseURL) {
+  if (!baseURL) return "";
+  try {
+    return new URL(String(baseURL)).host.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+function matchProvider(providerID, baseURL, mode = "family") {
+  const id = typeof providerID === "string" ? providerID.trim() : "";
+  const host = hostOf(baseURL);
+  if (mode === "strict") {
+    if (STRICT_ID_RE.test(id)) return true;
+    return !!host && STRICT_HOST_RE.test(host);
+  }
+  if (FAMILY_ID_RE.test(id)) return true;
+  if (!host) return false;
+  return FAMILY_HOST_PREFIX_RE.test(host) || /(?:^|\.)maas\.aliyuncs\.com$/i.test(host) || /dashscope/i.test(host);
+}
+function isProviderMatchMode(v) {
+  return v === "family" || v === "strict";
+}
+
 // src/core/rules.ts
 var SH_OFFSET_MIN = 8 * 60;
 var DAY_MIN = 1440;
@@ -520,7 +548,7 @@ var QODER_INSALE_FACTORS = {
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-var WRITTEN_BY = "@te-river/opencode-alibabatokenplan/server@0.1.0";
+var WRITTEN_BY = "@te-river/opencode-alibabatokenplan/server@0.1.1";
 var STALE_AFTER_SEC = 600;
 var CATALOG_ORIGIN = {
   live: "bailian-live",
@@ -811,7 +839,8 @@ var DEFAULT_CONFIG = {
   webpanel: { enabled: false, port: 7777 },
   sidebar: { order: 160, showNonTokenPlan: false },
   toast: true,
-  refresh: { catalogMin: 10, quotaMin: 5 }
+  refresh: { catalogMin: 10, quotaMin: 5 },
+  providerMatch: "family"
 };
 function loadConfig() {
   const d = structuredClone(DEFAULT_CONFIG);
@@ -825,6 +854,7 @@ function loadConfig() {
       if (raw.toast !== void 0) d.toast = !!raw.toast;
       if (Number.isInteger(raw.refresh?.catalogMin) && raw.refresh.catalogMin > 0) d.refresh.catalogMin = raw.refresh.catalogMin;
       if (Number.isInteger(raw.refresh?.quotaMin) && raw.refresh.quotaMin > 0) d.refresh.quotaMin = raw.refresh.quotaMin;
+      if (isProviderMatchMode(raw.providerMatch)) d.providerMatch = raw.providerMatch;
     }
   } catch {
   }
@@ -891,10 +921,12 @@ export {
   fmtShortDur,
   homeSummaryLine,
   isCrossVerified,
+  isProviderMatchMode,
   isStale,
   legacyCacheFile,
   legacyPortFile,
   loadConfig,
+  matchProvider,
   mergeOffers,
   originRank,
   parseGroups,

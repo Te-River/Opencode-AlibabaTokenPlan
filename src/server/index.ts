@@ -21,6 +21,7 @@ import { QODER_SNAPSHOT_DATE, QODER_INSALE_FACTORS } from "../core/qoder-snapsho
 import { windowState, fmtCountdown } from "../core/rules";
 import { fmtFactor, strikethrough, showStrike } from "../core/text";
 import { isCrossVerified } from "../core/merge";
+import { matchProvider, isProviderMatchMode } from "../core/provider";
 import type { ModelEntry, OfferRule, StatusFile } from "../core/types";
 
 const PKG_ID = "@te-river/opencode-alibabatokenplan";
@@ -377,6 +378,92 @@ function renderToolOutput(filter: string): string {
   return lines.join("\n");
 }
 
+// ─────────────────────────── R1：桌面命令通道（command.execute.before 确定性输出） ───────────────────────────
+
+/** 紧凑优惠摘要——桌面（无 TUI 渲染层）唯一可靠通道是转录文本，这里做确定性渲染。
+ *  providerID 仅用于「非阿里系」前缀注明；本函数不做门控（显式调用总是可用，R2 边界）。 */
+export function renderDesktopSummary(filter = "", providerID?: string): string {
+  const st = currentStatus();
+  const now = new Date();
+  const match = (m: string) => !filter || m === filter || m.includes(filter);
+  const lines: string[] = [];
+  if (providerID && !matchProvider(providerID, undefined, "family")) {
+    lines.push(`⚠ 当前供应商非阿里系（providerID=${providerID}），以下为其共享模型倍率与优惠目录。`);
+  }
+  const srcNote = st.sources.catalog === "bailian-live" ? "实时接口" : st.sources.catalog === "bailian-cli" ? "本机 CLI" : "快照";
+  let clock = "";
+  try { clock = now.toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false }); } catch { clock = now.toISOString(); }
+  lines.push(`Token Plan 优惠摘要 · ${clock} · Asia/Shanghai` + (filter ? ` · 过滤: ${filter}` : ""));
+  // 当前窗口状态 + 倒计时（进行中优先，其次按最近边界）
+  const wss = st.windows.map((w) => ({ w, s: windowState(w, now) }));
+  const ordered = [...wss.filter((x) => x.s.active), ...wss.filter((x) => !x.s.active)]
+    .filter((x) => !filter || x.w.models.some((m) => match(m.model)));
+  for (const { w, s } of ordered.slice(0, 2)) {
+    const cd = s.active
+      ? `${fmtCountdown(s.minutesToNextBoundary)}后结束（${w.end}）`
+      : `${fmtCountdown(s.minutesToNextBoundary)}后开始（${w.start}）`;
+    lines.push(`${s.active ? "▸" : "▹"} ${w.label} ${w.start}–${w.end} ${s.active ? "优惠中" : "未开始"} · ${cd}`);
+    for (const m of w.models.filter((x) => match(x.model)).slice(0, 6)) {
+      const strike = showStrike(parseFloat(m.regular ?? ""), parseFloat(m.effective ?? ""));
+      lines.push(`   ${m.model} ${strike ? strikethrough(m.regular!) + " " : ""}${m.effective ?? ""} ${m.badge ?? ""}${isCrossVerified(m) ? " [双源印证]" : ""}`);
+    }
+  }
+  if (filter && !ordered.length) lines.push(`（当前窗口目录中无「${filter}」相关条目，以下按全量数据过滤）`);
+  const inSale = Object.entries(QODER_INSALE_FACTORS).filter(([k]) => match(k));
+  if (inSale.length) lines.push("在卖倍率（Qoder Credits，非优惠基准）：" + inSale.map(([k, v]) => `${k} ${fmtFactor(v.factor)}${v.note ? "(" + v.note + ")" : ""}`).join(" · "));
+  const flat = st.offers.filter((r) => r.kind === "flat-cut" && r.models.some(match));
+  if (flat.length) {
+    lines.push(`限时优惠（共 ${flat.length} 条，显示前 ${Math.min(flat.length, 10)} 条；两套单位不互算）：`);
+    for (const r of flat.slice(0, 10)) {
+      const tags = [r.factor !== undefined ? `×${r.factor}` : "", r.batchStack !== undefined ? `Batch叠加×${r.batchStack}` : ""].filter(Boolean).join(" ");
+      lines.push(`• ${r.models.join(", ")}（${unitLabel(r)}）: ${tags}${r.note ? " — " + r.note : ""}`);
+    }
+  }
+  if (filter) {
+    for (const m of st.textModels.filter((x) => match(x.model))) {
+      lines.push(`• ${m.model}: 输入 ${m.input} / 缓存 ${m.cache} / 输出 ${m.output} Credits/百万tokens${m.bands ? `（${m.bands}）` : ""}${m.badge ? `（${m.badge.label}，${m.badge.countdown}）` : ""}`);
+    }
+  }
+  lines.push(st.quota.available ? `额度: 实时可用（${st.quota.checkedAt}）` : `额度: ${st.quota.hint ?? "不可用"}`);
+  lines.push(`来源=百炼公开目录（${srcNote}，更新于 ${state.fetchedAt}）+ Qoder 客户端公开界面快照转录 ${QODER_SNAPSHOT_DATE}（静态截至日，不调用任何私有端点）`);
+  lines.push(`口径：时区 Asia/Shanghai；1 元 = ${CREDITS_PER_YUAN} Credits（计费示例换算，非官方汇率）；消耗/Cost 单位 Credit；runtimeConfig 会变实际消耗；折扣以控制台账单为准。`);
+  return lines.join("\n");
+}
+
+/** R1 拦截实现（机制依据桌面 app.asar 实证，详见 11 号报告）：
+ *  宿主在 trigger("command.execute.before", input, {parts}) 之后**无条件**用同一 parts 数组调 prompt()，
+ *  且模型请求只收 `text && !ignored && text!==""` 的部分 → 原地重写 parts 为
+ *  [ignored 全表（用户可见/模型不可见） + synthetic 极简指令（模型可见/用户隐藏）]，
+ *  模型只剩一句确认的输出，优惠文本 100% 由插件确定性渲染进转录。
+ *  quota 实码（plugin.js:911-915→218-220→57-84）只做了另一层：noReply+ignored 独立注入、不触碰
+ *  命令自身 parts（其模板仍会过 LLM）——本实现取其注入语义、补上其未做的 parts 重写。
+ *  fail-open：无 client / 渲染异常 → 不改 parts，旧「经 LLM 调工具」模板兜底（v0.1.0 行为）。 */
+export async function handleTokenplanCommand(input: any, output: any): Promise<void> {
+  if (input?.command !== "tokenplan") return;
+  const parts = output?.parts;
+  if (!client || !Array.isArray(parts)) return;
+  let text: string;
+  try {
+    let providerID: string | undefined;
+    try {
+      // v1 类型未声明 Session.model，运行时存在（quota plugin.js:470-473 同款读法；失败=不加前缀）
+      const r: any = await client.session?.get?.({ path: { id: String(input.sessionID ?? "") } });
+      const pid = r?.data?.model?.providerID ?? r?.model?.providerID;
+      if (typeof pid === "string" && pid) providerID = pid;
+    } catch {}
+    text = renderDesktopSummary(String(input.arguments ?? "").trim(), providerID);
+  } catch {
+    return; // fail-open：保持宿主默认命令流转
+  }
+  parts.length = 0;
+  parts.push({ type: "text", text, ignored: true });
+  parts.push({
+    type: "text",
+    text: `插件已把 Token Plan 优惠摘要直接写入本条消息（ignored 部分不进入你的上下文）。请仅回复一句「✅ 优惠摘要已展示（数据截至 ${QODER_SNAPSHOT_DATE}）」，不要复述摘要内容、不要调用任何工具。`,
+    synthetic: true,
+  });
+}
+
 // ─────────────────────────── 插件入口 ───────────────────────────
 
 let cfgNow: AtpConfig | null = null;
@@ -393,11 +480,13 @@ const plugin = async (input: any, options?: any) => {
     const extra = typeof options === "string" ? undefined : options;
     if (extra && typeof extra === "object") {
       const merged = JSON.parse(JSON.stringify(cfgNow));
-      for (const k of ["webpanel", "sidebar", "toast", "refresh"]) {
+      for (const k of ["webpanel", "sidebar", "toast", "refresh", "providerMatch"]) {
         const v = (extra as any)[k];
         if (v === undefined) continue;
         // m7：toast 等布尔/标量键直接赋值——旧 Object.assign(bool, v) 静默失效/抛错
-        if (typeof v !== "object" || v === null) (merged as any)[k] = v;
+        // R2：providerMatch 只认 family/strict 两个字面量
+        if (k === "providerMatch") { if (isProviderMatchMode(v)) (merged as any)[k] = v; }
+        else if (typeof v !== "object" || v === null) (merged as any)[k] = v;
         else Object.assign((merged as any)[k] ?? {}, v);
       }
       cfgNow = merged;
@@ -447,13 +536,18 @@ const plugin = async (input: any, options?: any) => {
       server = null;
     },
     config: async (config: any) => {
-      // 兜底命令（03-D4）：无 opentui 层的宿主经此路径走 LLM，接受其 token 成本并注明
+      // R1 主路径由 command.execute.before 确定性重写；此 template 是 fail-open 兜底
+      // （宿主 hook 异常/无 client 时才走 LLM，接受 token 成本并注明）
       config.command = config.command ?? {};
       config.command.tokenplan = {
-        description: "查询 Token Plan 优惠/倍率/倒计时（由 @te-river/opencode-alibabatokenplan 注入；本兜底路径经 LLM，会消耗 token）",
-        template: "调用 tokenplan_discounts 工具，把当前 Token Plan 优惠窗口、倒计时与各模型倍率原样整理给我，不要额外发挥。$ARGUMENTS",
+        description: "显示 Token Plan 优惠/倍率/倒计时：插件确定性直写本会话转录（不耗 token 复述）；可选参数=模型名过滤",
+        template:
+          "兜底路径（正常时应由插件 command.execute.before 直接写入优惠摘要）：调用 tokenplan_discounts 工具，把输出原样整理给我，不要额外发挥。$ARGUMENTS",
       };
     },
+    // R1：桌面（Electron 无 TUI 渲染层）命令通道——拦截 tokenplan，重写 parts 为
+    // ignored 全表 + synthetic 极简指令（机制依据桌面 asar 实证，见 handleTokenplanCommand 注释）
+    "command.execute.before": handleTokenplanCommand,
     tool: {
       tokenplan_discounts: toolDef(""),
       bailian_discounts: toolDef("(已并入 tokenplan_discounts) "),
@@ -473,4 +567,7 @@ export const __testing = {
   lastActive,
   getStatus: currentStatus,
   setClient: (c: any) => { client = c; },
+  // R1/R2 回归锚点：命令拦截重写 + 紧凑摘要渲染
+  handleTokenplanCommand,
+  renderDesktopSummary,
 };

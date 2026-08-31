@@ -8,6 +8,7 @@ import { createElement, setProp, effect, insert, createComponent } from "@opentu
 import { createSignal, onCleanup } from "solid-js";
 import type { StatusFile, WindowView } from "../core/types";
 import { loadConfig, type AtpConfig } from "../core/status";
+import { matchProvider, isProviderMatchMode, type ProviderMatchMode } from "../core/provider";
 import { windowState, fmtHMS, fmtShortDur } from "../core/rules";
 import { fmtFactor, homeSummaryLine, sourceBadgeLine } from "../core/text";
 import { isCrossVerified, canonicalize } from "../core/merge";
@@ -58,13 +59,16 @@ function line(text: string | (() => string), style: HProps = {}): any {
   return h("text", props);
 }
 
-// ─────────────────────────── provider 门控（03-D4 / 02 伪码双保险） ───────────────────────────
+// ─────────────────────────── provider 门控（0.1.1 R2：core matchProvider 双模式） ───────────────────────────
+// 判定逻辑本身在 core/provider.ts（family/strict 表驱动可单测）；这里只做宿主字段提取。
 
-const TP_PROVIDER_RE = /^alibaba-token-plan(-cn)?$/i;
-const TP_HOST_RE = /token-plan\.[a-z0-9-]+\.maas\.aliyuncs\.com/i;
-
-function isTPProviderID(id: unknown): boolean {
-  return typeof id === "string" && TP_PROVIDER_RE.test(id);
+function providerBaseURL(api: any, id: string): string {
+  try {
+    const p: any = (api.state.provider as any[])?.find((x) => x?.id === id || x?.provider?.id === id);
+    return String(p?.options?.baseURL ?? p?.provider?.options?.baseURL ?? "");
+  } catch {
+    return "";
+  }
 }
 
 function sessionProviderID(api: any, sessionID: string): string | undefined {
@@ -83,25 +87,19 @@ function sessionProviderID(api: any, sessionID: string): string | undefined {
   return undefined;
 }
 
-function sessionIsTokenPlan(api: any, sessionID: string): boolean {
+function sessionIsTokenPlan(api: any, sessionID: string, mode: ProviderMatchMode): boolean {
   const pid = sessionProviderID(api, sessionID);
-  if (isTPProviderID(pid)) return true;
+  if (matchProvider(pid, undefined, mode)) return true;
   if (!pid) return false;
-  try {
-    const p: any = (api.state.provider as any[])?.find((x) => x?.id === pid || x?.provider?.id === pid);
-    const base = p?.options?.baseURL ?? p?.provider?.options?.baseURL ?? "";
-    return TP_HOST_RE.test(String(base));
-  } catch {
-    return false;
-  }
+  return matchProvider(pid, providerBaseURL(api, pid), mode);
 }
 
-function anyTokenPlanProvider(api: any): boolean {
+function anyTokenPlanProvider(api: any, mode: ProviderMatchMode): boolean {
   try {
     for (const p of (api.state.provider as any[]) ?? []) {
-      if (isTPProviderID(p?.id) || isTPProviderID(p?.provider?.id)) return true;
+      const id = p?.id ?? p?.provider?.id;
       const base = p?.options?.baseURL ?? p?.provider?.options?.baseURL ?? "";
-      if (TP_HOST_RE.test(String(base))) return true;
+      if (matchProvider(typeof id === "string" ? id : undefined, String(base), mode)) return true;
     }
   } catch {}
   return false;
@@ -356,12 +354,13 @@ const tui = async (api: any, options?: unknown, _meta?: unknown) => {
   try {
     const extra = typeof options === "string" ? undefined : (options as any);
     if (extra && typeof extra === "object") {
-      for (const k of ["sidebar", "webpanel", "toast", "refresh"]) {
+      for (const k of ["sidebar", "webpanel", "toast", "refresh", "providerMatch"]) {
         const v = extra[k];
         if (v === undefined) continue;
         // m7：toast 等布尔/标量键直接赋值（旧 `if(extra[k]) Object.assign(cfg[k], v)` 对 boolean
-        // 既丢 false 又静默失效），对象键才做浅合并
-        if (typeof v !== "object" || v === null) (cfg as any)[k] = v;
+        // 既丢 false 又静默失效），对象键才做浅合并；R2：providerMatch 只认 family/strict
+        if (k === "providerMatch") { if (isProviderMatchMode(v)) (cfg as any)[k] = v; }
+        else if (typeof v !== "object" || v === null) (cfg as any)[k] = v;
         else Object.assign((cfg as any)[k] ?? {}, v);
       }
     }
@@ -377,8 +376,8 @@ const tui = async (api: any, options?: unknown, _meta?: unknown) => {
       sidebar_content(_ctx: any, props: any) {
         const sid = String(props?.session_id ?? "");
         if (!sid) return null;
-        const tp = sessionIsTokenPlan(api, sid);
-        if (!tp && !cfg.sidebar.showNonTokenPlan) return null; // 默认非 TP 整块隐藏（D4 取舍）
+        const tp = sessionIsTokenPlan(api, sid, cfg.providerMatch);
+        if (!tp && !cfg.sidebar.showNonTokenPlan) return null; // R2：family 下 alibaba-cn 会话也命中；非匹配家族仍默认整块隐藏（D4 取舍）
         if (!tp) {
           // showNonTokenPlan=true → 弱化一行
           return line(() => {
@@ -389,7 +388,7 @@ const tui = async (api: any, options?: unknown, _meta?: unknown) => {
         return buildSidebar(api, vs, sid, collapsed, toggleCollapsed);
       },
       home_bottom() {
-        if (!anyTokenPlanProvider(api)) return null; // 门控=state.provider 含任一 TP 条目
+        if (!anyTokenPlanProvider(api, cfg.providerMatch)) return null; // 门控=state.provider 含任一匹配条目（R2 默认 family）
         // M3：复用共享 1Hz 时钟（摘要粒度到分钟，逐秒重算成本可忽略），不再局部 setInterval
         return line(() => homeSummaryLine(vs.get().status, new Date(getNow())), { fg: () => api.theme.current.textMuted });
       },

@@ -388,11 +388,39 @@ function homeSummaryLine(st, now = /* @__PURE__ */ new Date()) {
   return parts.join(" \xB7 ");
 }
 
+// src/core/provider.ts
+var FAMILY_ID_RE = /^alibaba(?:-.*)?$/i;
+var STRICT_ID_RE = /^alibaba-token-plan(?:-[a-z]+)*$/i;
+var STRICT_HOST_RE = /^token-plan(?:\.[a-z0-9-]+)*\.maas\.aliyuncs\.com$/i;
+var FAMILY_HOST_PREFIX_RE = /^(token-plan|coding)\./i;
+function hostOf(baseURL) {
+  if (!baseURL) return "";
+  try {
+    return new URL(String(baseURL)).host.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+function matchProvider(providerID, baseURL, mode = "family") {
+  const id = typeof providerID === "string" ? providerID.trim() : "";
+  const host = hostOf(baseURL);
+  if (mode === "strict") {
+    if (STRICT_ID_RE.test(id)) return true;
+    return !!host && STRICT_HOST_RE.test(host);
+  }
+  if (FAMILY_ID_RE.test(id)) return true;
+  if (!host) return false;
+  return FAMILY_HOST_PREFIX_RE.test(host) || /(?:^|\.)maas\.aliyuncs\.com$/i.test(host) || /dashscope/i.test(host);
+}
+function isProviderMatchMode(v) {
+  return v === "family" || v === "strict";
+}
+
 // src/core/status.ts
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-var WRITTEN_BY = "@te-river/opencode-alibabatokenplan/server@0.1.0";
+var WRITTEN_BY = "@te-river/opencode-alibabatokenplan/server@0.1.1";
 var STALE_AFTER_SEC = 600;
 var CATALOG_ORIGIN = {
   live: "bailian-live",
@@ -671,7 +699,8 @@ var DEFAULT_CONFIG = {
   webpanel: { enabled: false, port: 7777 },
   sidebar: { order: 160, showNonTokenPlan: false },
   toast: true,
-  refresh: { catalogMin: 10, quotaMin: 5 }
+  refresh: { catalogMin: 10, quotaMin: 5 },
+  providerMatch: "family"
 };
 function loadConfig() {
   const d = structuredClone(DEFAULT_CONFIG);
@@ -685,6 +714,7 @@ function loadConfig() {
       if (raw.toast !== void 0) d.toast = !!raw.toast;
       if (Number.isInteger(raw.refresh?.catalogMin) && raw.refresh.catalogMin > 0) d.refresh.catalogMin = raw.refresh.catalogMin;
       if (Number.isInteger(raw.refresh?.quotaMin) && raw.refresh.quotaMin > 0) d.refresh.quotaMin = raw.refresh.quotaMin;
+      if (isProviderMatchMode(raw.providerMatch)) d.providerMatch = raw.providerMatch;
     }
   } catch {
   }
@@ -768,10 +798,13 @@ function line(text, style = {}) {
   const props = { wrapMode: "word", ...style, content: text };
   return h("text", props);
 }
-var TP_PROVIDER_RE = /^alibaba-token-plan(-cn)?$/i;
-var TP_HOST_RE = /token-plan\.[a-z0-9-]+\.maas\.aliyuncs\.com/i;
-function isTPProviderID(id) {
-  return typeof id === "string" && TP_PROVIDER_RE.test(id);
+function providerBaseURL(api, id) {
+  try {
+    const p = api.state.provider?.find((x) => x?.id === id || x?.provider?.id === id);
+    return String(p?.options?.baseURL ?? p?.provider?.options?.baseURL ?? "");
+  } catch {
+    return "";
+  }
 }
 function sessionProviderID(api, sessionID) {
   try {
@@ -790,24 +823,18 @@ function sessionProviderID(api, sessionID) {
   }
   return void 0;
 }
-function sessionIsTokenPlan(api, sessionID) {
+function sessionIsTokenPlan(api, sessionID, mode) {
   const pid = sessionProviderID(api, sessionID);
-  if (isTPProviderID(pid)) return true;
+  if (matchProvider(pid, void 0, mode)) return true;
   if (!pid) return false;
-  try {
-    const p = api.state.provider?.find((x) => x?.id === pid || x?.provider?.id === pid);
-    const base = p?.options?.baseURL ?? p?.provider?.options?.baseURL ?? "";
-    return TP_HOST_RE.test(String(base));
-  } catch {
-    return false;
-  }
+  return matchProvider(pid, providerBaseURL(api, pid), mode);
 }
-function anyTokenPlanProvider(api) {
+function anyTokenPlanProvider(api, mode) {
   try {
     for (const p of api.state.provider ?? []) {
-      if (isTPProviderID(p?.id) || isTPProviderID(p?.provider?.id)) return true;
+      const id = p?.id ?? p?.provider?.id;
       const base = p?.options?.baseURL ?? p?.provider?.options?.baseURL ?? "";
-      if (TP_HOST_RE.test(String(base))) return true;
+      if (matchProvider(typeof id === "string" ? id : void 0, String(base), mode)) return true;
     }
   } catch {
   }
@@ -1064,10 +1091,12 @@ var tui = async (api, options, _meta) => {
   try {
     const extra = typeof options === "string" ? void 0 : options;
     if (extra && typeof extra === "object") {
-      for (const k of ["sidebar", "webpanel", "toast", "refresh"]) {
+      for (const k of ["sidebar", "webpanel", "toast", "refresh", "providerMatch"]) {
         const v = extra[k];
         if (v === void 0) continue;
-        if (typeof v !== "object" || v === null) cfg[k] = v;
+        if (k === "providerMatch") {
+          if (isProviderMatchMode(v)) cfg[k] = v;
+        } else if (typeof v !== "object" || v === null) cfg[k] = v;
         else Object.assign(cfg[k] ?? {}, v);
       }
     }
@@ -1092,7 +1121,7 @@ var tui = async (api, options, _meta) => {
       sidebar_content(_ctx, props) {
         const sid = String(props?.session_id ?? "");
         if (!sid) return null;
-        const tp = sessionIsTokenPlan(api, sid);
+        const tp = sessionIsTokenPlan(api, sid, cfg.providerMatch);
         if (!tp && !cfg.sidebar.showNonTokenPlan) return null;
         if (!tp) {
           return line(() => {
@@ -1103,7 +1132,7 @@ var tui = async (api, options, _meta) => {
         return buildSidebar(api, vs, sid, collapsed, toggleCollapsed);
       },
       home_bottom() {
-        if (!anyTokenPlanProvider(api)) return null;
+        if (!anyTokenPlanProvider(api, cfg.providerMatch)) return null;
         return line(() => homeSummaryLine(vs.get().status, new Date(getNow())), { fg: () => api.theme.current.textMuted });
       }
     }

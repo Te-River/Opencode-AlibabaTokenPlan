@@ -459,11 +459,39 @@ function strikethrough(s) {
   return s.replace(/[^\u0300-\u036f]/g, (c) => c + "\u0336");
 }
 
+// src/core/provider.ts
+var FAMILY_ID_RE = /^alibaba(?:-.*)?$/i;
+var STRICT_ID_RE = /^alibaba-token-plan(?:-[a-z]+)*$/i;
+var STRICT_HOST_RE = /^token-plan(?:\.[a-z0-9-]+)*\.maas\.aliyuncs\.com$/i;
+var FAMILY_HOST_PREFIX_RE = /^(token-plan|coding)\./i;
+function hostOf(baseURL) {
+  if (!baseURL) return "";
+  try {
+    return new URL(String(baseURL)).host.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+function matchProvider(providerID, baseURL, mode = "family") {
+  const id = typeof providerID === "string" ? providerID.trim() : "";
+  const host = hostOf(baseURL);
+  if (mode === "strict") {
+    if (STRICT_ID_RE.test(id)) return true;
+    return !!host && STRICT_HOST_RE.test(host);
+  }
+  if (FAMILY_ID_RE.test(id)) return true;
+  if (!host) return false;
+  return FAMILY_HOST_PREFIX_RE.test(host) || /(?:^|\.)maas\.aliyuncs\.com$/i.test(host) || /dashscope/i.test(host);
+}
+function isProviderMatchMode(v) {
+  return v === "family" || v === "strict";
+}
+
 // src/core/status.ts
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-var WRITTEN_BY = "@te-river/opencode-alibabatokenplan/server@0.1.0";
+var WRITTEN_BY = "@te-river/opencode-alibabatokenplan/server@0.1.1";
 var STALE_AFTER_SEC = 600;
 var CATALOG_ORIGIN = {
   live: "bailian-live",
@@ -746,7 +774,8 @@ var DEFAULT_CONFIG = {
   webpanel: { enabled: false, port: 7777 },
   sidebar: { order: 160, showNonTokenPlan: false },
   toast: true,
-  refresh: { catalogMin: 10, quotaMin: 5 }
+  refresh: { catalogMin: 10, quotaMin: 5 },
+  providerMatch: "family"
 };
 function loadConfig() {
   const d = structuredClone(DEFAULT_CONFIG);
@@ -760,6 +789,7 @@ function loadConfig() {
       if (raw.toast !== void 0) d.toast = !!raw.toast;
       if (Number.isInteger(raw.refresh?.catalogMin) && raw.refresh.catalogMin > 0) d.refresh.catalogMin = raw.refresh.catalogMin;
       if (Number.isInteger(raw.refresh?.quotaMin) && raw.refresh.quotaMin > 0) d.refresh.quotaMin = raw.refresh.quotaMin;
+      if (isProviderMatchMode(raw.providerMatch)) d.providerMatch = raw.providerMatch;
     }
   } catch {
   }
@@ -1149,6 +1179,78 @@ function renderToolOutput(filter) {
   lines.push("\u53E3\u5F84\uFF1A\u6D88\u8017/Cost \u5355\u4F4D Credit\uFF1BruntimeConfig \u4F1A\u53D8\u5B9E\u9645\u6D88\u8017\uFF1B\u6298\u6263\u4EE5\u63A7\u5236\u53F0\u8D26\u5355\u4E3A\u51C6\u3002");
   return lines.join("\n");
 }
+function renderDesktopSummary(filter = "", providerID) {
+  const st = currentStatus();
+  const now = /* @__PURE__ */ new Date();
+  const match = (m) => !filter || m === filter || m.includes(filter);
+  const lines = [];
+  if (providerID && !matchProvider(providerID, void 0, "family")) {
+    lines.push(`\u26A0 \u5F53\u524D\u4F9B\u5E94\u5546\u975E\u963F\u91CC\u7CFB\uFF08providerID=${providerID}\uFF09\uFF0C\u4EE5\u4E0B\u4E3A\u5176\u5171\u4EAB\u6A21\u578B\u500D\u7387\u4E0E\u4F18\u60E0\u76EE\u5F55\u3002`);
+  }
+  const srcNote = st.sources.catalog === "bailian-live" ? "\u5B9E\u65F6\u63A5\u53E3" : st.sources.catalog === "bailian-cli" ? "\u672C\u673A CLI" : "\u5FEB\u7167";
+  let clock = "";
+  try {
+    clock = now.toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
+  } catch {
+    clock = now.toISOString();
+  }
+  lines.push(`Token Plan \u4F18\u60E0\u6458\u8981 \xB7 ${clock} \xB7 Asia/Shanghai` + (filter ? ` \xB7 \u8FC7\u6EE4: ${filter}` : ""));
+  const wss = st.windows.map((w) => ({ w, s: windowState(w, now) }));
+  const ordered = [...wss.filter((x) => x.s.active), ...wss.filter((x) => !x.s.active)].filter((x) => !filter || x.w.models.some((m) => match(m.model)));
+  for (const { w, s } of ordered.slice(0, 2)) {
+    const cd = s.active ? `${fmtCountdown(s.minutesToNextBoundary)}\u540E\u7ED3\u675F\uFF08${w.end}\uFF09` : `${fmtCountdown(s.minutesToNextBoundary)}\u540E\u5F00\u59CB\uFF08${w.start}\uFF09`;
+    lines.push(`${s.active ? "\u25B8" : "\u25B9"} ${w.label} ${w.start}\u2013${w.end} ${s.active ? "\u4F18\u60E0\u4E2D" : "\u672A\u5F00\u59CB"} \xB7 ${cd}`);
+    for (const m of w.models.filter((x) => match(x.model)).slice(0, 6)) {
+      const strike = showStrike(parseFloat(m.regular ?? ""), parseFloat(m.effective ?? ""));
+      lines.push(`   ${m.model} ${strike ? strikethrough(m.regular) + " " : ""}${m.effective ?? ""} ${m.badge ?? ""}${isCrossVerified(m) ? " [\u53CC\u6E90\u5370\u8BC1]" : ""}`);
+    }
+  }
+  if (filter && !ordered.length) lines.push(`\uFF08\u5F53\u524D\u7A97\u53E3\u76EE\u5F55\u4E2D\u65E0\u300C${filter}\u300D\u76F8\u5173\u6761\u76EE\uFF0C\u4EE5\u4E0B\u6309\u5168\u91CF\u6570\u636E\u8FC7\u6EE4\uFF09`);
+  const inSale = Object.entries(QODER_INSALE_FACTORS).filter(([k]) => match(k));
+  if (inSale.length) lines.push("\u5728\u5356\u500D\u7387\uFF08Qoder Credits\uFF0C\u975E\u4F18\u60E0\u57FA\u51C6\uFF09\uFF1A" + inSale.map(([k, v]) => `${k} ${fmtFactor(v.factor)}${v.note ? "(" + v.note + ")" : ""}`).join(" \xB7 "));
+  const flat = st.offers.filter((r) => r.kind === "flat-cut" && r.models.some(match));
+  if (flat.length) {
+    lines.push(`\u9650\u65F6\u4F18\u60E0\uFF08\u5171 ${flat.length} \u6761\uFF0C\u663E\u793A\u524D ${Math.min(flat.length, 10)} \u6761\uFF1B\u4E24\u5957\u5355\u4F4D\u4E0D\u4E92\u7B97\uFF09\uFF1A`);
+    for (const r of flat.slice(0, 10)) {
+      const tags = [r.factor !== void 0 ? `\xD7${r.factor}` : "", r.batchStack !== void 0 ? `Batch\u53E0\u52A0\xD7${r.batchStack}` : ""].filter(Boolean).join(" ");
+      lines.push(`\u2022 ${r.models.join(", ")}\uFF08${unitLabel(r)}\uFF09: ${tags}${r.note ? " \u2014 " + r.note : ""}`);
+    }
+  }
+  if (filter) {
+    for (const m of st.textModels.filter((x) => match(x.model))) {
+      lines.push(`\u2022 ${m.model}: \u8F93\u5165 ${m.input} / \u7F13\u5B58 ${m.cache} / \u8F93\u51FA ${m.output} Credits/\u767E\u4E07tokens${m.bands ? `\uFF08${m.bands}\uFF09` : ""}${m.badge ? `\uFF08${m.badge.label}\uFF0C${m.badge.countdown}\uFF09` : ""}`);
+    }
+  }
+  lines.push(st.quota.available ? `\u989D\u5EA6: \u5B9E\u65F6\u53EF\u7528\uFF08${st.quota.checkedAt}\uFF09` : `\u989D\u5EA6: ${st.quota.hint ?? "\u4E0D\u53EF\u7528"}`);
+  lines.push(`\u6765\u6E90=\u767E\u70BC\u516C\u5F00\u76EE\u5F55\uFF08${srcNote}\uFF0C\u66F4\u65B0\u4E8E ${state.fetchedAt}\uFF09+ Qoder \u5BA2\u6237\u7AEF\u516C\u5F00\u754C\u9762\u5FEB\u7167\u8F6C\u5F55 ${QODER_SNAPSHOT_DATE}\uFF08\u9759\u6001\u622A\u81F3\u65E5\uFF0C\u4E0D\u8C03\u7528\u4EFB\u4F55\u79C1\u6709\u7AEF\u70B9\uFF09`);
+  lines.push(`\u53E3\u5F84\uFF1A\u65F6\u533A Asia/Shanghai\uFF1B1 \u5143 = ${CREDITS_PER_YUAN} Credits\uFF08\u8BA1\u8D39\u793A\u4F8B\u6362\u7B97\uFF0C\u975E\u5B98\u65B9\u6C47\u7387\uFF09\uFF1B\u6D88\u8017/Cost \u5355\u4F4D Credit\uFF1BruntimeConfig \u4F1A\u53D8\u5B9E\u9645\u6D88\u8017\uFF1B\u6298\u6263\u4EE5\u63A7\u5236\u53F0\u8D26\u5355\u4E3A\u51C6\u3002`);
+  return lines.join("\n");
+}
+async function handleTokenplanCommand(input, output) {
+  if (input?.command !== "tokenplan") return;
+  const parts = output?.parts;
+  if (!client || !Array.isArray(parts)) return;
+  let text;
+  try {
+    let providerID;
+    try {
+      const r = await client.session?.get?.({ path: { id: String(input.sessionID ?? "") } });
+      const pid = r?.data?.model?.providerID ?? r?.model?.providerID;
+      if (typeof pid === "string" && pid) providerID = pid;
+    } catch {
+    }
+    text = renderDesktopSummary(String(input.arguments ?? "").trim(), providerID);
+  } catch {
+    return;
+  }
+  parts.length = 0;
+  parts.push({ type: "text", text, ignored: true });
+  parts.push({
+    type: "text",
+    text: `\u63D2\u4EF6\u5DF2\u628A Token Plan \u4F18\u60E0\u6458\u8981\u76F4\u63A5\u5199\u5165\u672C\u6761\u6D88\u606F\uFF08ignored \u90E8\u5206\u4E0D\u8FDB\u5165\u4F60\u7684\u4E0A\u4E0B\u6587\uFF09\u3002\u8BF7\u4EC5\u56DE\u590D\u4E00\u53E5\u300C\u2705 \u4F18\u60E0\u6458\u8981\u5DF2\u5C55\u793A\uFF08\u6570\u636E\u622A\u81F3 ${QODER_SNAPSHOT_DATE}\uFF09\u300D\uFF0C\u4E0D\u8981\u590D\u8FF0\u6458\u8981\u5185\u5BB9\u3001\u4E0D\u8981\u8C03\u7528\u4EFB\u4F55\u5DE5\u5177\u3002`,
+    synthetic: true
+  });
+}
 var cfgNow = null;
 var plugin = async (input, options) => {
   client = input?.client ?? null;
@@ -1162,10 +1264,12 @@ var plugin = async (input, options) => {
     const extra = typeof options === "string" ? void 0 : options;
     if (extra && typeof extra === "object") {
       const merged = JSON.parse(JSON.stringify(cfgNow));
-      for (const k of ["webpanel", "sidebar", "toast", "refresh"]) {
+      for (const k of ["webpanel", "sidebar", "toast", "refresh", "providerMatch"]) {
         const v = extra[k];
         if (v === void 0) continue;
-        if (typeof v !== "object" || v === null) merged[k] = v;
+        if (k === "providerMatch") {
+          if (isProviderMatchMode(v)) merged[k] = v;
+        } else if (typeof v !== "object" || v === null) merged[k] = v;
         else Object.assign(merged[k] ?? {}, v);
       }
       cfgNow = merged;
@@ -1228,10 +1332,13 @@ var plugin = async (input, options) => {
     config: async (config) => {
       config.command = config.command ?? {};
       config.command.tokenplan = {
-        description: "\u67E5\u8BE2 Token Plan \u4F18\u60E0/\u500D\u7387/\u5012\u8BA1\u65F6\uFF08\u7531 @te-river/opencode-alibabatokenplan \u6CE8\u5165\uFF1B\u672C\u515C\u5E95\u8DEF\u5F84\u7ECF LLM\uFF0C\u4F1A\u6D88\u8017 token\uFF09",
-        template: "\u8C03\u7528 tokenplan_discounts \u5DE5\u5177\uFF0C\u628A\u5F53\u524D Token Plan \u4F18\u60E0\u7A97\u53E3\u3001\u5012\u8BA1\u65F6\u4E0E\u5404\u6A21\u578B\u500D\u7387\u539F\u6837\u6574\u7406\u7ED9\u6211\uFF0C\u4E0D\u8981\u989D\u5916\u53D1\u6325\u3002$ARGUMENTS"
+        description: "\u663E\u793A Token Plan \u4F18\u60E0/\u500D\u7387/\u5012\u8BA1\u65F6\uFF1A\u63D2\u4EF6\u786E\u5B9A\u6027\u76F4\u5199\u672C\u4F1A\u8BDD\u8F6C\u5F55\uFF08\u4E0D\u8017 token \u590D\u8FF0\uFF09\uFF1B\u53EF\u9009\u53C2\u6570=\u6A21\u578B\u540D\u8FC7\u6EE4",
+        template: "\u515C\u5E95\u8DEF\u5F84\uFF08\u6B63\u5E38\u65F6\u5E94\u7531\u63D2\u4EF6 command.execute.before \u76F4\u63A5\u5199\u5165\u4F18\u60E0\u6458\u8981\uFF09\uFF1A\u8C03\u7528 tokenplan_discounts \u5DE5\u5177\uFF0C\u628A\u8F93\u51FA\u539F\u6837\u6574\u7406\u7ED9\u6211\uFF0C\u4E0D\u8981\u989D\u5916\u53D1\u6325\u3002$ARGUMENTS"
       };
     },
+    // R1：桌面（Electron 无 TUI 渲染层）命令通道——拦截 tokenplan，重写 parts 为
+    // ignored 全表 + synthetic 极简指令（机制依据桌面 asar 实证，见 handleTokenplanCommand 注释）
+    "command.execute.before": handleTokenplanCommand,
     tool: {
       tokenplan_discounts: toolDef(""),
       bailian_discounts: toolDef("(\u5DF2\u5E76\u5165 tokenplan_discounts) ")
@@ -1248,11 +1355,16 @@ var __testing = {
   getStatus: currentStatus,
   setClient: (c) => {
     client = c;
-  }
+  },
+  // R1/R2 回归锚点：命令拦截重写 + 紧凑摘要渲染
+  handleTokenplanCommand,
+  renderDesktopSummary
 };
 export {
   AliBabaTokenPlanPlugin,
   __testing,
   blSpawnPlan,
-  index_default as default
+  index_default as default,
+  handleTokenplanCommand,
+  renderDesktopSummary
 };

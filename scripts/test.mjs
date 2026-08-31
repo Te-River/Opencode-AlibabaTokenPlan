@@ -209,3 +209,119 @@ test("M3 TUI tick：全模块仅 2 处 setInterval（30s 数据轮询+单一 1Hz
   assert.match(src, /onCleanup\(stopSharedTicker\)/); // Solid root 清理①
   assert.match(src, /api\.lifecycle\.onDispose\(\(\) => \{[\s\S]{0,160}stopTicker\(\)/); // 宿主生命周期清理②
 });
+
+// ═════════════════ 0.1.1 R1 桌面命令通道（command.execute.before 拦截重写 parts） ═════════════════
+
+test("R1 拦截：tokenplan → parts 重写为 [ignored 摘要 + synthetic 极简指令]，含窗口行/来源声明/时区", async () => {
+  const t = srv.__testing;
+  const seen = [];
+  t.setClient({ session: { get: async (q) => { seen.push(q); return { data: { model: { providerID: "alibaba-token-plan-cn" } } }; } } });
+  const raw = { type: "text", text: "兜底模板 $ARGUMENTS" };
+  const output = { parts: [raw] };
+  await t.handleTokenplanCommand({ command: "tokenplan", sessionID: "ses_42", arguments: "" }, output);
+  assert.equal(seen.length, 1); // sessionID 取自 input.sessionID（宿主 hook 契约）
+  assert.equal(seen[0].path.id, "ses_42");
+  assert.equal(output.parts.length, 2); // 原模板被原地清空重写（宿主 trigger 后同一数组进 prompt()）
+  const [table, directive] = output.parts;
+  assert.equal(table.type, "text");
+  assert.equal(table.ignored, true); // 用户可见、模型上下文剔除（桌面 asar request-builder 实证过滤 ignored）
+  assert.notEqual(table.synthetic, true);
+  assert.equal(directive.synthetic, true); // 模型可见、UI 隐藏
+  assert.equal(directive.ignored, undefined);
+  assert.match(table.text, /Token Plan 优惠摘要/);
+  assert.match(table.text, /[▸▹] .+ \d{2}:\d{2}–\d{2}:\d{2}/); // 当前窗口行（label + start–end）
+  assert.match(table.text, /后(结束|开始)（\d{2}:\d{2}）/); // 倒计时 + 边界
+  assert.match(table.text, /在卖倍率/);
+  assert.match(table.text, /来源=百炼公开目录.+快照转录 2026-08-31（静态截至日，不调用任何私有端点）/); // 来源与截至声明
+  assert.match(table.text, /Asia\/Shanghai/); // 时区
+  t.setClient(null);
+});
+
+test("R1 模型过滤：arguments=qwen3.8-flash 时只保留该模型相关行", async () => {
+  const t = srv.__testing;
+  const output = { parts: [{ type: "text", text: "x" }] };
+  t.setClient({ session: { get: async () => ({ data: { model: { providerID: "alibaba-cn" } } }) } });
+  await t.handleTokenplanCommand({ command: "tokenplan", sessionID: "s", arguments: " qwen3.8-flash " }, output);
+  const text = output.parts[0].text;
+  assert.ok(text.includes("qwen3.8-flash"), "过滤目标须在场");
+  assert.ok(!text.includes("kimi-k2.7-code"), "其它在卖倍率行不得出现");
+  assert.ok(!text.includes("deepseek-v4-pro"), "其它在卖倍率行不得出现（第二样本）");
+  t.setClient(null);
+});
+
+test("R1 非阿里供应商：不受门控（照常出全量摘要）但行首加前缀注明", async () => {
+  const t = srv.__testing;
+  t.setClient({ session: { get: async () => ({ data: { model: { providerID: "anthropic" } } }) } });
+  const output = { parts: [{ type: "text", text: "x" }] };
+  await t.handleTokenplanCommand({ command: "tokenplan", sessionID: "s", arguments: "" }, output);
+  const text = output.parts[0].text;
+  assert.ok(text.startsWith("⚠ 当前供应商非阿里系（providerID=anthropic）"), `实际首行: ${text.split("\n")[0]}`);
+  assert.match(text, /22:00–08:00/, "前缀之外仍输出完整共享倍率/优惠目录（显式调用不设门控）");
+  t.setClient(null);
+});
+
+test("R1 边界：非 tokenplan 命令/无 client 不改 parts（fail-open）；session.get 异常仅丢前缀", async () => {
+  const t = srv.__testing;
+  const orig = [{ type: "text", text: "keep" }];
+  t.setClient({ session: { get: async () => ({ data: {} }) } });
+  const o1 = { parts: [...orig] };
+  await t.handleTokenplanCommand({ command: "init", sessionID: "s", arguments: "" }, o1);
+  assert.deepEqual(o1.parts, orig); // 其他命令放行
+  t.setClient(null);
+  const o2 = { parts: [...orig] };
+  await t.handleTokenplanCommand({ command: "tokenplan", sessionID: "s", arguments: "" }, o2);
+  assert.deepEqual(o2.parts, orig); // 无宿主 client → 保留旧 LLM 兜底模板路径
+  t.setClient({ session: { get: async () => { throw new Error("boom"); } } });
+  const o3 = { parts: [{ type: "text", text: "x" }] };
+  await t.handleTokenplanCommand({ command: "tokenplan", sessionID: "s", arguments: "" }, o3);
+  assert.equal(o3.parts.length, 2); // provider 探测失败只丢前缀，不拦摘要
+  assert.ok(!o3.parts[0].text.startsWith("⚠"));
+  t.setClient(null);
+});
+
+// ═════════════════ 0.1.1 R2 provider 门控 family/strict 判定表 ═════════════════
+
+test("R2 matchProvider 判定表：family（默认放宽）vs strict（0.1.0 语义）", () => {
+  const { matchProvider } = core;
+  const rows = [
+    // [providerID, baseURL, family, strict]
+    ["alibaba-cn", undefined, true, false], // 用户最常用形态：family 真 / strict 假（0.1.0 会挡）
+    ["alibaba-token-plan-cn", undefined, true, true], // 两模式皆真
+    ["alibaba-token-plan", undefined, true, true],
+    ["anthropic", undefined, false, false], // 两模式皆假
+    ["alibaba", undefined, true, false],
+    ["custom", "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1", true, true], // host=token-plan 族
+    ["custom", "https://coding.ap-southeast-1.maas.aliyuncs.com/v1", true, false], // host=coding.*：family 真 strict 假
+    ["custom", "https://dashscope.aliyuncs.com/compatible-mode/v1", true, false], // dashscope 域：family 真
+    ["custom", "https://dashscope-intl.aliyuncs.com/v1", true, false], // dashscope 变体域
+    ["custom", "https://api.anthropic.com/v1", false, false], // 无关 host 两假
+    [undefined, undefined, false, false], // 空输入
+    ["", "not a url", false, false], // 坏 URL 静默按无 host
+  ];
+  for (const [id, base, fam, strict] of rows) {
+    assert.equal(matchProvider(id, base, "family"), fam, `family(${id}, ${base})`);
+    assert.equal(matchProvider(id, base, "strict"), strict, `strict(${id}, ${base})`);
+  }
+  assert.equal(matchProvider("alibaba-cn", undefined), true); // 第三参默认=family
+});
+
+test("R2 配置：providerMatch 默认 family；config.jsonc 可切 strict；非法值回退", () => {
+  process.env.ATP_CONFIG_DIR = path.join(tmp, "cfg-r2");
+  fs.mkdirSync(process.env.ATP_CONFIG_DIR, { recursive: true });
+  assert.equal(core.loadConfig().providerMatch, "family"); // 缺席=默认
+  fs.writeFileSync(path.join(process.env.ATP_CONFIG_DIR, "config.jsonc"), `{ "providerMatch": "strict" }`);
+  assert.equal(core.loadConfig().providerMatch, "strict");
+  fs.writeFileSync(path.join(process.env.ATP_CONFIG_DIR, "config.jsonc"), `{ "providerMatch": "whatever" }`);
+  assert.equal(core.loadConfig().providerMatch, "family"); // 非法值→默认
+  delete process.env.ATP_CONFIG_DIR;
+});
+
+test("R2 TUI/桌面接线：sidebar/home 走 cfg.providerMatch；桌面命令不受门控（源码锚点）", () => {
+  const tuiSrc = fs.readFileSync(new URL("../src/tui/index.tsx", import.meta.url), "utf8");
+  assert.match(tuiSrc, /sessionIsTokenPlan\(api, sid, cfg\.providerMatch\)/); // sidebar 门控用双模式判定
+  assert.match(tuiSrc, /anyTokenPlanProvider\(api, cfg\.providerMatch\)/); // home_bottom 同源
+  assert.ok(!/TP_PROVIDER_RE|isTPProviderID/.test(tuiSrc), "旧 strict-only 正则应移出 TUI");
+  const srvSrc = fs.readFileSync(new URL("../src/server/index.ts", import.meta.url), "utf8");
+  assert.match(srvSrc, /"command\.execute\.before": handleTokenplanCommand/); // R1 hook 已挂
+  assert.match(srvSrc, /if \(input\?\.command !== "tokenplan"\) return;/); // 仅拦本命令
+});
