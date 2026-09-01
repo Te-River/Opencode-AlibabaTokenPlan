@@ -421,7 +421,7 @@ function isProviderMatchMode(v) {
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-var WRITTEN_BY = "@te-river/opencode-alibabatokenplan/server@0.1.2";
+var WRITTEN_BY = "@te-river/opencode-alibabatokenplan/server@0.1.3";
 var STALE_AFTER_SEC = 600;
 var CATALOG_ORIGIN = {
   live: "bailian-live",
@@ -697,11 +697,15 @@ function parseJsonc(text) {
   return JSON.parse(res);
 }
 var DEFAULT_CONFIG = {
-  webpanel: { enabled: false, port: 7777 },
+  // 0.1.3：仪表盘是主界面（桌面实证：无 TUI 渲染层，web 面板是唯一持久信息面）→ 默认开
+  webpanel: { enabled: true, port: 7777 },
   sidebar: { order: 160, showNonTokenPlan: false },
   toast: true,
   refresh: { catalogMin: 10, quotaMin: 5 },
-  providerMatch: "family"
+  providerMatch: "family",
+  slash: false,
+  toastOnBoot: true,
+  dashboard: { autoOpen: false }
 };
 function loadConfig() {
   const d = structuredClone(DEFAULT_CONFIG);
@@ -716,6 +720,9 @@ function loadConfig() {
       if (Number.isInteger(raw.refresh?.catalogMin) && raw.refresh.catalogMin > 0) d.refresh.catalogMin = raw.refresh.catalogMin;
       if (Number.isInteger(raw.refresh?.quotaMin) && raw.refresh.quotaMin > 0) d.refresh.quotaMin = raw.refresh.quotaMin;
       if (isProviderMatchMode(raw.providerMatch)) d.providerMatch = raw.providerMatch;
+      if (raw.slash !== void 0) d.slash = !!raw.slash;
+      if (raw.toastOnBoot !== void 0) d.toastOnBoot = !!raw.toastOnBoot;
+      if (raw.dashboard?.autoOpen !== void 0) d.dashboard.autoOpen = !!raw.dashboard.autoOpen;
     }
   } catch {
   }

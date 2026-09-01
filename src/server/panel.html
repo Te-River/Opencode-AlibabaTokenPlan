@@ -3,6 +3,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Token Plan 优惠雷达</title>
 <style>
+  /* 暗色玻璃拟态 · 零外部依赖（无 CDN/字体请求）· 响应式 ≥380px */
   :root{
     --bg0:#090b11;--bg1:#0f131c;--card:rgba(21,26,37,.66);--line:rgba(148,163,199,.10);
     --tx:#e8ecf4;--dim:#7e8798;--faint:#565e70;
@@ -12,7 +13,7 @@
   *{box-sizing:border-box}
   html{scrollbar-gutter:stable}
   body{
-    margin:0;padding:16px 14px 20px;min-height:100vh;color:var(--tx);
+    margin:0;padding:14px 12px 20px;min-height:100vh;color:var(--tx);max-width:640px;margin-inline:auto;
     font:13px/1.5 "Segoe UI","Microsoft YaHei",system-ui,sans-serif;
     background:radial-gradient(900px 420px at 85% -180px,rgba(99,102,241,.16),transparent 62%),
                radial-gradient(700px 380px at -10% 8%,rgba(52,211,153,.07),transparent 55%),
@@ -20,118 +21,289 @@
     background-attachment:fixed;
   }
   ::-webkit-scrollbar{width:8px}::-webkit-scrollbar-thumb{background:rgba(148,163,199,.16);border-radius:99px}
-  h1{font-size:15px;margin:0;font-weight:650;letter-spacing:.2px}
+  h1{font-size:15px;margin:0;font-weight:650;letter-spacing:.2px;white-space:nowrap}
   .sub{color:var(--dim);font-size:11px}
-  .dot{width:7px;height:7px;border-radius:99px;background:var(--warn);box-shadow:0 0 8px currentColor;display:inline-block}
-  .dot.ok{background:var(--ok)} .dot.warn{background:var(--warn)}
+  .dot{width:7px;height:7px;border-radius:99px;background:var(--warn);box-shadow:0 0 8px currentColor;display:inline-block;flex:none}
+  .dot.ok{background:var(--ok)} .dot.warn{background:var(--warn)} .dot.idle{background:var(--faint);box-shadow:none}
   .pulse{animation:pulse 2.4s ease-in-out infinite}@keyframes pulse{50%{opacity:.35}}
-  header{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+  header{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap}
   header .grow{flex:1}
-  .pill{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:99px;padding:2px 9px;font-size:11px;color:var(--dim);background:rgba(255,255,255,.025);white-space:nowrap}
+  button.rf{border:1px solid var(--line);border-radius:9px;background:rgba(255,255,255,.04);color:var(--tx);
+    font-size:11.5px;padding:3px 10px;cursor:pointer;font-family:inherit}
+  button.rf:hover{background:rgba(122,162,255,.12);border-color:rgba(122,162,255,.35)}
+  button.rf:disabled{opacity:.45;cursor:default}
+  .pill{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:99px;
+    padding:2px 9px;font-size:11px;color:var(--dim);background:rgba(255,255,255,.025);white-space:nowrap}
   .pill b{color:var(--tx);font-weight:600}
-  .card{
-    position:relative;background:var(--card);border:1px solid var(--line);border-radius:14px;
-    padding:14px;margin-bottom:12px;backdrop-filter:blur(6px);overflow:hidden;
-  }
+  .gray{opacity:.62;filter:saturate(.4)}
+  .card{position:relative;background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:12px 14px;margin-bottom:11px;backdrop-filter:blur(6px);overflow:hidden}
   .card::before{content:"";position:absolute;inset:0 0 auto 0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.14),transparent)}
-  .hero{padding:16px}
-  .hero .top{display:flex;align-items:center;gap:8px;margin-bottom:10px}
-  .hero .name{font-size:14px;font-weight:650}
-  .factor{font-family:var(--mono);font-weight:700;color:var(--hot);font-size:13px;
-    border:1px solid rgba(248,113,113,.35);background:rgba(248,113,113,.08);border-radius:8px;padding:1px 7px}
-  .cd{display:flex;align-items:baseline;gap:9px;margin:2px 0 4px}
-  .cd .num{font-family:var(--mono);font-size:38px;font-weight:700;letter-spacing:1px;line-height:1;
-    font-variant-numeric:tabular-nums;color:var(--tx)}
+  .card h3{font-size:13.5px;margin:0;font-weight:650}
+  .hd{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+  .hd .grow{flex:1}
+  .cd{display:flex;align-items:baseline;gap:8px;margin:2px 0 4px;flex-wrap:wrap}
+  .cd .num{font-family:var(--mono);font-size:30px;font-weight:700;letter-spacing:1px;line-height:1.1;
+    font-variant-numeric:tabular-nums;color:#c7cfdf}
   .cd.on .num{color:var(--ok);text-shadow:0 0 22px rgba(52,211,153,.35)}
-  .cd.off .num{color:#c7cfdf}
-  .cd .lbl{font-size:12px;color:var(--dim);margin-left:4px}
-  .cd .unit{font-size:13px;color:var(--dim);margin:0 10px 0 3px;font-weight:500}
-  .bar{height:4px;border-radius:99px;background:rgba(148,163,199,.14);margin:12px 0 10px;overflow:hidden}
+  .cd .lbl{font-size:12px;color:var(--dim)}
+  .cd.on .lbl{color:var(--ok)}
+  .bar{height:4px;border-radius:99px;background:rgba(148,163,199,.14);margin:10px 0;overflow:hidden}
   .bar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,rgba(52,211,153,.55),var(--ok));transition:width 1s linear}
-  .meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-  .chip{border:1px solid var(--line);border-radius:99px;padding:2.5px 9px;color:var(--tx);background:rgba(255,255,255,.03);font-family:var(--mono);font-size:10.5px}
-  .chip s{color:var(--faint);margin-right:4px}
+  h2{font-size:11px;margin:16px 2px 7px;color:var(--dim);font-weight:600;letter-spacing:.6px}
+  .chip{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);border-radius:99px;
+    padding:2px 8px;background:rgba(255,255,255,.03);font-family:var(--mono);font-size:10.5px}
+  .chip s{color:var(--faint);margin-right:3px}
   .chip em{color:var(--hot);font-style:normal;font-weight:600}
-  h2{font-size:11px;margin:16px 2px 8px;color:var(--dim);font-weight:600;letter-spacing:.6px}
-  .kv{display:flex;justify-content:space-between;gap:10px;padding:6px 10px;border-radius:8px;font-size:12px}
-  .kv:hover{background:rgba(255,255,255,.03)}
-  .kv .k{color:var(--dim);font-family:var(--mono);font-size:11.5px}
-  .kv .v{font-family:var(--mono);font-variant-numeric:tabular-nums}
-  .kv .v .d{color:var(--hot)}
-  .hint{color:var(--warn);font-size:11.5px;margin:8px 10px 4px}
-  .glab{font-size:10.5px;color:var(--faint);letter-spacing:.5px;padding:8px 10px 2px}
-  .foot{color:var(--faint);font-size:10.5px;margin-top:12px;line-height:1.7}
+  .chip.dual{border-color:rgba(52,211,153,.4);color:var(--ok);background:rgba(52,211,153,.07)}
+  .chip.hot{border-color:rgba(251,191,36,.4);color:var(--warn);background:rgba(251,191,36,.07)}
+  .mrow{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:4px 0;border-top:1px dashed rgba(148,163,199,.08)}
+  .mname{font-family:var(--mono);font-size:11.5px}
+  .mnote{color:var(--faint);font-size:10.5px}
+  table{width:100%;border-collapse:collapse;font-size:11.5px}
+  th{color:var(--faint);font-weight:500;text-align:left;padding:4px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
+  td{padding:4.5px 6px;border-bottom:1px solid rgba(148,163,199,.06);font-family:var(--mono);font-variant-numeric:tabular-nums}
+  td.n{font-family:inherit}
+  td e{color:var(--ok);font-style:normal;font-weight:650}
+  tr.exp{opacity:.5}
+  .unit-tag{font-size:10px;color:var(--accent);border:1px solid rgba(122,162,255,.3);border-radius:6px;padding:0 5px}
+  .unit-tag.cny{color:var(--warn);border-color:rgba(251,191,36,.3)}
+  .ext{text-decoration:none;font-size:10px;opacity:.75}
+  .foot{color:var(--faint);font-size:10.5px;margin-top:14px;line-height:1.8}
+  .foot code{display:block;background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:8px;
+    padding:6px 8px;color:var(--dim);font-size:10.5px;word-break:break-all;cursor:copy;margin:3px 0}
   .dimv{color:var(--faint)}
-  .srcq{color:var(--accent)}
+  .sep{border-top:1px solid rgba(148,163,199,.12);margin:10px 0 6px}
   a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+  @media (max-width:420px){ .cd .num{font-size:24px} body{padding:10px 8px 16px} .card{padding:10px} th,td{padding:3.5px 4px} }
 </style></head><body>
 <header>
-  <span class="dot pulse" id="dot"></span>
+  <span class="dot warn" id="dot"></span>
   <h1>Token Plan 优惠雷达</h1>
   <span class="grow"></span>
-  <span class="pill" id="src"></span>
+  <span class="pill" id="srcinfo">加载中…</span>
+  <button class="rf" id="btnRefresh" type="button">刷新</button>
 </header>
-<div id="rules"></div>
-<h2 id="offerTitle">优惠明细</h2>
-<div class="card" style="padding:6px 4px"><div id="offers"></div></div>
-<h2>文本模型价目（Credits / 百万 tokens）</h2>
-<div class="card" style="padding:6px 4px"><div id="tms"></div></div>
-<div class="foot" id="foot"></div>
+<div id="statusline" class="sub" style="min-height:14px"></div>
+<main>
+  <div id="windows"></div>
+  <h2>在卖倍率总表 · Qoder Credits</h2>
+  <div class="card" id="insale"></div>
+  <h2>百炼价目（¥ → Credits / 百万 tokens）</h2>
+  <div class="card" id="prices"></div>
+  <h2>活动与政策</h2>
+  <div class="card" id="notices"></div>
+  <h2>实时额度</h2>
+  <div class="card" id="quota"></div>
+  <div class="foot" id="foot"></div>
+</main>
 <script>
-var base=null;
-function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
-function shMin(){var d=new Date();var cn=new Date(d.getTime()+(d.getTimezoneOffset()+480)*60000);return cn.getHours()*60+cn.getMinutes()+cn.getSeconds()/60}
-function parseHm(s){var p=s.split(":");return (+p[0])*60+(+p[1]||0)}
-function winState(s,e){var m=shMin();var wraps=s>e;var total=wraps?e+1440-s:e-s;var active=wraps?(m>=s||m<e):(m>=s&&m<e);var toNext;
- if(active){toNext=wraps?(m>=s?e+1440-m:e-m):(e-m)}else{toNext=(m<s?s-m:s+1440-m)}
- return{active:active,toNext:Math.max(0,toNext),total:total,pct:active?Math.round(100*(total-toNext)/total):0}}
-function durParts(mins){var m=Math.round(mins);var h=Math.floor(m/60);m=m%60;return{h:h,m:m}}
+var STATE=null,REFRESHING=false;
+function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;")}
+/* 数据层外的诚实性底线：只渲染 http(s) 外链，其余（javascript:/数据串）降为纯文本 */
+function safeUrl(u){u=String(u||"");return /^https?:\/\//i.test(u)?u:""}
+function linksHtml(ls,cls){return (ls||[]).filter(safeUrl).map(function(l){
+  return '<a class="'+(cls||"ext")+'" href="'+esc(safeUrl(l))+'" target="_blank" rel="noopener" title="官方链接">↗</a>'}).join("")}
 function srcName(s){return{"bailian-live":"实时接口","bailian-cli":"本机 CLI","bailian-snapshot":"快照","qoder-snapshot":"Qoder 快照"}[s]||s}
-async function load(){try{var r=await fetch("/api/status");base=await r.json();render()}catch(e){document.getElementById("foot").textContent="加载失败: "+e}}
-function render(){
- if(!base)return;
- var anyOn=base.windows.some(function(w){var s=winState(parseHm(w.start),parseHm(w.end));return s.active});
- document.getElementById("dot").className="dot pulse "+(anyOn?"ok":"warn");
- document.getElementById("src").innerHTML='<b>'+esc(srcName(base.sources.catalog))+'</b> + <span class="srcq">Qoder快照 '+esc(base.sources.qoderSnapshot)+'</span> · '+
-  new Date(base.updatedAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",timeZone:"Asia/Shanghai"});
- // ── 主卡：窗口 ──
- var R=document.getElementById("rules");R.innerHTML="";
- base.windows.forEach(function(w){
-  var s=winState(parseHm(w.start),parseHm(w.end));
-  var d=document.createElement("div");d.className="card hero";
-  var chips=w.models.map(function(m){
-    return '<span class="chip">'+esc(m.model)+(m.regular&&m.regular!==m.effective?' <s>'+esc(m.regular)+'</s>':'')+(m.effective?' <em>'+esc(m.effective)+'</em>':'')+'</span>';
-  }).join("");
-  d.innerHTML='<div class="top"><span class="dot '+(s.active?"ok":"warn")+' pulse"></span>'
-   +'<span class="name">'+esc(w.label)+'</span>'
-   +'<span class="grow" style="flex:1"></span><span class="sub">'+esc(w.start)+'–'+esc(w.end)+'（北京时间）</span></div>'
-   +'<div class="cd '+(s.active?"on":"off")+'"><span class="num">'+durParts(s.toNext).h+'</span><span class="unit">小时</span><span class="num">'+durParts(s.toNext).m+'</span><span class="unit">分</span>'
-   +'<span class="lbl">'+(s.active?"后结束 · 优惠进行中":"后开始")+'</span></div>'
-   +'<div class="bar"><i style="width:'+(s.active?s.pct:0)+'%"></i></div>'
-   +'<div class="meta">'+chips+'</div>';
-  R.appendChild(d);
- });
- // ── 优惠明细（两套单位各居其 facet） ──
- var flat=base.offers.filter(function(r){return r.kind==="flat-cut"});
- document.getElementById("offerTitle").textContent="限时优惠 · "+flat.length+" 项（Credits 倍率与 ¥ 价格倍率不互算）";
- document.getElementById("offers").innerHTML=flat.length?flat.map(function(r){
-   var tags=(r.factor!==undefined?"×"+r.factor:"")+(r.batchStack!==undefined?" Batch叠加×"+r.batchStack:"");
-   return '<div class="kv"><span class="k">'+esc(r.models.join(", "))+'（'+esc(r.unit==="credits-factor"?"Qoder Credits":"百炼 ¥")+'）</span>'
-     +'<span class="v"><span class="d">'+esc(tags)+'</span> '+esc(r.label)+(r.origins.length>1?' <span class="srcq">[双源印证]</span>':"")+'</span></div>';
- }).join(""):'<div class="dimv" style="padding:6px 10px;font-size:11.5px">当前没有限时优惠</div>';
- // ── 文本模型 ──
- document.getElementById("tms").innerHTML=base.textModels.map(function(m){
-   return '<div class="kv"><span class="k">'+esc(m.model)+(m.bands?'（'+esc(m.bands)+'）':"")+(m.creditsFactor?' · Qoder '+esc(m.creditsFactor):"")+'</span>'
-    +'<span class="v">输入 '+esc(m.input)+' / 缓存 '+esc(m.cache)+' / 输出 '+esc(m.output)
-    +(m.badge?' <span class="d">'+esc(m.badge.label)+' '+esc(m.badge.countdown)+"</span>":"")+'</span></div>';
- }).join("");
- // ── 页脚 ──
- var notices=base.notices.map(function(n){return esc(n.text)+(n.expired?"（已过期）":"")+"　〔"+esc(n.source)+"〕"}).join("<br>");
- document.getElementById("foot").innerHTML=
-  "1 元 = "+base.creditsPerYuan+" Credits（"+esc(base.creditsRateNote)+"）· 对话里可用 tokenplan_discounts 工具查询 · 折扣以控制台账单为准"
-  +(base.quota.available?"":"<br>"+esc(base.quota.hint||""))
-  +(notices?"<br>"+notices:"")
-  +(base.sources.error?"<br>数据源降级: "+esc(base.sources.error):"");
+/* ── 北京时间窗口客户端重算（对齐 TUI m4：status stale / nextBoundaryAt 过期时本地兜底） ── */
+function parseHm(s){var p=String(s).split(":");return (+p[0])*60+(+p[1]||0)}
+function shMin(now){var d=now||new Date();return d.getHours()*60+d.getMinutes()+d.getSeconds()/60+(d.getTimezoneOffset()+480)}
+function winLocal(w,now){ /* → {active,toNextMs,totalMin,pct} 按 start/end（跨午夜=start>end） */
+  var s=parseHm(w.start),e=parseHm(w.end),m=shMin(now),wraps=s>e;
+  var total=wraps?e+1440-s:e-s;
+  var active=wraps?(m>=s||m<e):(m>=s&&m<e);
+  var toNext=active?(wraps?(m>=s?e+1440-m:e-m):(e-m)):(m<s?s-m:s+1440-m);
+  return{active:active,toNextMs:Math.max(0,toNext)*60000,totalMin:total,pct:active?Math.max(0,Math.min(100,Math.round(100*(total-toNext)/total))):0}}
+function winRemain(w,now){ /* 优先 nextBoundaryAt ISO；stale/越界(≤0 或 >24h)/非法 → 本地重算 */
+  now=now||new Date();
+  var l=winLocal(w,now); // pct 恒用本地重算（ISO 路径也带上，供进度条）
+  var p=Date.parse(w.nextBoundaryAt),rem=p-now.getTime();
+  var stale=STATE&&STATE.updatedAt?now.getTime()-Date.parse(STATE.updatedAt)>(STATE.staleAfterSec||600)*1000:false;
+  if(!stale&&!Number.isNaN(p)&&rem>0&&rem<=86400000) return{active:w.boundaryKind==="end",ms:rem,pct:l.pct};
+  return{active:l.active,ms:l.toNextMs,pct:l.pct}}
+function fmtHms(ms){var t=Math.max(0,Math.floor(ms/1000));var p=function(n){return String(n).padStart(2,"0")};
+  return p(Math.floor(t/3600))+":"+p(Math.floor(t%3600/60))+":"+p(t%60)}
+function isDual(origins){origins=origins||[];return origins.indexOf("qoder-snapshot")>=0&&origins.some(function(o){return String(o).indexOf("bailian-")===0})}
+function originChips(origins){var q=(origins||[]).indexOf("qoder-snapshot")>=0,b=(origins||[]).some(function(o){return String(o).indexOf("bailian-")===0});
+  return (q&&b)?'<span class="chip dual">双源印证</span>':(q?'<span class="chip">Qoder</span>':'<span class="chip">百炼</span>')}
+function hhmmss(v){try{return new Date(v).toLocaleTimeString("zh-CN",{hour12:false,timeZone:"Asia/Shanghai"})}catch(e){return String(v||"—")}}
+/* ── ① 顶栏 ── */
+function renderTopbar(st){
+  var anyOn=(st.windows||[]).some(function(w){return winRemain(w,new Date()).active});
+  return {dot:anyOn?"dot pulse ok":"dot pulse warn",
+    src:'<b>'+esc(srcName((st.sources||{}).catalog||"?"))+'</b> + <span class="gray">Qoder快照 '+esc((st.sources||{}).qoderSnapshot||"?")+'</span> · 更新于 <b>'+esc(hhmmss(st.updatedAt))+'</b>'};
 }
-setInterval(load,30000);setInterval(render,1000);load();
+/* ── ② 错峰窗口主卡（credits-factor 窗优先） ── */
+function modelUnitIndex(st){var idx={};(st.offers||[]).forEach(function(o){
+  if(o.kind!=="time-window"||!o.window||!o.unit)return;
+  (o.models||[]).forEach(function(m){var k=o.window.start+"|"+o.window.end+"|"+m;(idx[k]=idx[k]||[]).indexOf(o.unit)<0&&(idx[k]=idx[k]||[]).push(o.unit)})});
+  return idx}
+/** 错峰窗排序（credits-factor 窗优先 → active 优先 → start 升序）。renderWindows/tick 共用，
+ *  保证 DOM data-cd 索引与每秒 tick 重算的窗口序严格一致（否则 tick 会写错卡）。 */
+function sortedWindows(st,now){
+  var idx=modelUnitIndex(st);
+  var meta=(st.windows||[]).map(function(w){
+    var units={};w.models.forEach(function(m){(idx[w.start+"|"+w.end+"|"+m.model]||[]).forEach(function(u){units[u]=1})});
+    return {w:w,credits:!!units["credits-factor"],cny:!!units["cny-price"],r:winRemain(w,now)}});
+  meta.sort(function(a,b){return (b.credits?1:0)-(a.credits?1:0)||(b.r.active?1:0)-(a.r.active?1:0)||a.w.start.localeCompare(b.w.start)});
+  return meta}
+function renderWindows(st,now){
+  now=now||new Date();
+  return sortedWindows(st,now).map(function(x,i){
+    var w=x.w,r=x.r;
+    var rows=w.models.map(function(m){
+      var strike=m.regular&&m.regular!==m.effective;
+      return '<div class="mrow"><span class="mname">'+esc(m.model)+'</span>'
+        +(strike?'<s>'+esc(m.regular)+'</s><span class="mnote">→</span>':'')
+        +(m.effective?'<em style="color:var(--hot);font-style:normal;font-weight:650">'+esc(m.effective)+'</em>':'')
+        +(m.badge?'<span class="mnote">'+esc(String(m.badge).replace(/ · 双源印证$/,""))+'</span>':'')
+        +originChips(m.origins)+linksHtml(m.links)+'</div>'}).join("");
+    return '<div class="card"><div class="hd"><span class="dot '+(r.active?"ok pulse":"warn")+'"></span><h3>'+esc(w.label)+'</h3>'
+      +'<span class="mnote">'+esc(w.start)+'–'+esc(w.end)+' 北京时间</span>'
+      +(x.credits?'<span class="unit-tag">Qoder Credits</span>':'')+(x.cny?'<span class="unit-tag cny">百炼 ¥</span>':'')
+      +'<span class="grow"></span><span class="sub">'+esc(w.id)+'</span></div>'
+      +'<div class="cd '+(r.active?"on":"off")+'" data-cd="'+i+'"><span class="lbl" data-lbl>'+esc(r.active?"优惠进行中 · 距结束":"距开始")+'</span> <span class="num" data-num>'+esc(fmtHms(r.ms))+'</span></div>'
+      +(r.pct!==null&&r.pct!==undefined&&r.active?'<div class="bar"><i style="width:'+r.pct+'%"></i></div>':'')
+      +rows+'</div>'}).join("")}
+/* ── ③ 在卖倍率总表（E 行 + 错峰外 offer；限 credits-factor 单位） ── */
+function renderInSale(st,now){
+  now=now||new Date();
+  var offers=(st.offers||[]).filter(function(o){return o.unit==="credits-factor"});
+  var wunits={};(st.windows||[]).forEach(function(w){var r=winRemain(w,now);r.active&&(wunits[w.start+"|"+w.end]=1)});
+  var rows=(st.inSale||[]).map(function(e){ /* E 行：常规 | 生效(若≠) | 备注 */
+    var best=null;
+    offers.forEach(function(o){ if((o.models||[]).indexOf(e.model)<0)return;
+      if(o.kind==="flat-cut"&&o.factor!==undefined) best=best===null?o.factor:Math.min(best,o.factor);
+      if(o.kind==="time-window"&&o.window&&o.factor!==undefined&&wunits[o.window.start+"|"+o.window.end])
+        best=best===null?o.factor:Math.min(best,o.factor)});
+    var eff=best!==null?(best*100/100)+"x":""; /* fmt：与 fmtFactor 同口径 */
+    var effS=best!==null?String(parseFloat(eff)):null,regS=parseFloat(e.factor);
+    var diff=effS!==null&&effS!==regS;
+    return '<tr><td class="n">'+esc(e.model)+'</td><td>'+(diff?'<s>'+esc(e.factor)+'</s>':esc(e.factor))+'</td>'
+      +'<td>'+(diff?'<e>'+esc(eff)+'</e>':'<span class="dimv">=常规</span>')+'</td>'
+      +'<td class="n">'+esc([e.note].filter(Boolean).join(" · "))+'</td></tr>'});
+  var seen={};(st.inSale||[]).forEach(function(e){seen[e.model]=1});
+  var flat=offers.filter(function(o){return o.kind==="flat-cut"&&o.models.length&&seen[o.models[0]]===undefined});
+  flat.forEach(function(o){var m=o.models[0];
+    var v=o.factor!==undefined?'<e>'+esc(o.factor)+'x</e>':'<span class="mnote">'+esc(o.note||o.label||"仅文案")+'</span>';
+    rows.push('<tr><td class="n">'+esc(m)+' <span class="chip hot">限时</span></td><td>'+(o.baseFactor!==undefined?'<s>'+esc(o.baseFactor)+'x</s>':'—')+'</td>'
+      +'<td>'+v+'</td><td class="n">'+esc(o.label||"")+(o.origins&&isDual(o.origins)?' <span class="chip dual">双源印证</span>':'')+linksHtml(o.links)+'</td></tr>')});
+  var allLinks=[];offers.forEach(function(o){(o.links||[]).forEach(function(l){if(allLinks.indexOf(l)<0)allLinks.push(l)})});
+  return '<table><tr><th>模型</th><th>常规倍率</th><th>生效倍率</th><th>备注</th></tr>'
+    +(rows.join("")||'<tr><td colspan="4" class="dimv">暂无在卖倍率数据</td></tr>')+'</table>'
+    +'<div class="sep"></div><div class="mnote">倍率为 Qoder Credits 消耗系数，截至 '+esc((st.sources||{}).qoderSnapshot||"?")+'，以官方活动页为准'+linksHtml(allLinks)+"</div>";
+}
+/* ── ④ 百炼价目 facet（cny-price；与②③单位严格分面不混排） ── */
+function renderPrices(st){
+  var tms=st.textModels||[];
+  var hasF=tms.some(function(m){return m.creditsFactor});
+  var rows=tms.map(function(m){
+    return '<tr><td class="n">'+esc(m.model)+(m.badge?'<br><span class="chip hot">'+esc(m.badge.label)+' '+esc(m.badge.countdown)+'</span>':'')+'</td>'
+      +'<td>'+esc(m.input)+'</td><td>'+esc(m.cache)+'</td><td>'+esc(m.output)+'</td>'
+      +(hasF?'<td>'+(m.creditsFactor?esc(m.creditsFactor):'<span class="dimv">—</span>')+'</td>':'')+'</tr>'});
+  var head='<tr><th>模型</th><th>输入</th><th>缓存</th><th>输出</th>'+(hasF?'<th class="dimv">Qoder倍率</th>':'')+'</tr>';
+  var bandNote=tms.some(function(m){return m.bands})?'<div class="mnote" style="margin:2px 0 6px">数值为「峰 / 谷」双列（北京时间 22:00–08:00 为谷）· 单位 Credits/百万 tokens</div>':"";
+  var cny=(st.offers||[]).filter(function(o){return o.unit==="cny-price"&&o.kind!=="free-calls"&&o.kind!=="policy"});
+  var cnyRows=cny.map(function(o){
+    var tags=[o.factor!==undefined?"×"+esc(String(o.factor)):"",o.batchStack!==undefined?"Batch叠加×"+esc(String(o.batchStack)):""].filter(Boolean).join(" ");
+    return '<div class="mrow"><span class="mname">'+esc((o.models||[]).join(", "))+'</span><span>'+tags+'</span>'
+      +'<span class="mnote">'+esc(o.label+(o.note?" — "+o.note:""))+'</span>'+originChips(o.origins)+linksHtml(o.links)+'</div>'});
+  return bandNote+'<table>'+head+(rows.join("")||'<tr><td class="dimv">目录为空</td></tr>')+'</table>'
+    +(cnyRows.length?'<div class="sep"></div><div class="mnote" style="margin-bottom:4px">目录内 窗口/限时折扣 · Batch 叠加（¥ 价格倍率）</div>'+cnyRows.join(""):"")
+    +'<div class="sep"></div><div class="mnote">本区为百炼 ¥ 价格口径（含 ¥×250 展示换算价），与上方 Qoder Credits 倍率分面呈现、永不互算</div>';
+}
+/* ── ⑤ 活动与政策（free-calls / policy） ── */
+function renderNotices(st,now){
+  now=now||new Date();
+  var rows=(st.offers||[]).filter(function(o){return o.kind==="free-calls"||o.kind==="policy"}).map(function(o){
+    var expired=o.expiry?Date.parse(o.expiry)<now.getTime():false;
+    var src=o.origins.indexOf("qoder-snapshot")>=0?"Qoder 快照 "+esc(o.snapshotDate||(st.sources||{}).qoderSnapshot||""):esc(o.origins.join("+"));
+    return '<div class="mrow'+(expired?'" style="opacity:.45':'')+'"><span class="mname">'+esc(o.label)+'</span>'
+      +'<span class="chip'+(expired?" ":" hot")+'">'+(expired?"已过期 "+esc((o.expiry||"").slice(0,10)):(o.kind==="free-calls"?"免费额度":"政策"))+'</span>'
+      +(o.note?'<span class="mnote">'+esc(o.note)+'</span>':'')+'<span class="mnote">来源:'+src+'</span>'+linksHtml(o.links)+'</div>'});
+  return rows.join("")||'<div class="dimv">暂无活动/政策条目</div>';
+}
+/* ── ⑥ quota ── */
+function pickUsage(d,depth){
+  if(!d||typeof d!=="object"||depth>4)return null;
+  var t=d.total??d.Total??d.quota??d.limit??d.totalQuota,u=d.used??d.Used??d.consumption??d.usedQuota;
+  if(typeof t==="number"&&typeof u==="number"&&t>0)return{total:t,used:u};
+  for(var k in d){var r=pickUsage(d[k],depth+1);if(r)return r}
+  return null}
+function renderQuota(st){
+  if(!st.quota||!st.quota.available)
+    return '<div class="mnote">'+esc((st.quota&&st.quota.hint)||"实时额度不可用")+'</div>';
+  var u=pickUsage(st.quota.data,0);
+  if(!u)return '<div class="mnote" style="color:var(--ok)">实时额度可用 · 查询于 '+esc(hhmmss(st.quota.checkedAt))+'</div>';
+  var pct=Math.max(0,Math.min(100,Math.round(u.used/u.total*100))),left=Math.max(0,u.total-u.used);
+  return '<div class="mnote" style="margin-bottom:6px">剩余 <span class="num" style="font-size:16px;color:var(--ok)">'+esc(String(left))+'</span> / '+esc(String(u.total))+'（已用 '+pct+'% · '+esc(hhmmss(st.quota.checkedAt))+'）</div>'
+    +'<div class="bar"><i style="width:'+(100-pct)+'%"></i></div>';
+}
+/* ── ⑦ 页脚 + 钉窗提示区 ── */
+function pinCommand(st){
+  var port=(st&&st.boundPort)||(typeof location!=="undefined"&&location.port)||"7777";
+  return "start msedge --app=http://127.0.0.1:"+port+" --window-size=430,900"}
+function renderFooter(st){
+  return '数据源：'+esc(srcName((st.sources||{}).catalog||"?"))+' + Qoder 快照 '+esc((st.sources||{}).qoderSnapshot||"?")
+    +'（静态）· 更新 '+esc(hhmmss(st.updatedAt))+' · 时区 Asia/Shanghai<br>'
+    +'1 元 = '+esc(String(st.creditsPerYuan||250))+' Credits 为展示换算（'+esc(st.creditsRateNote||"据百炼计费示例，非官方汇率")+'）· 折扣以控制台账单为准'
+    +(st.sources&&st.sources.error?'<br><span style="color:var(--warn)">数据源降级: '+esc(st.sources.error)+'</span>':"")
+    +'<div class="sep"></div><div>钉为独立小窗（无边框 · 可贴屏幕角落常驻）——复制下面命令到「运行」或终端：</div>'
+    +'<code id="pincmd" title="点击复制">'+esc(pinCommand(st))+'</code>';
+}
+/* ── 渲染主入口（纯字符串拼装；DOM 写入只在此后） ── */
+function renderAll(st,now){
+  var top=renderTopbar(st);
+  return {top:top,windows:renderWindows(st,now),insale:renderInSale(st,now),prices:renderPrices(st),
+    notices:renderNotices(st,now),quota:renderQuota(st),foot:renderFooter(st)}}
+function paint(st){
+  var now=new Date(),h=renderAll(st,now);
+  document.getElementById("dot").className=h.top.dot;
+  document.getElementById("srcinfo").innerHTML=h.top.src;
+  document.getElementById("windows").innerHTML=h.windows;
+  document.getElementById("insale").innerHTML=h.insale;
+  document.getElementById("prices").innerHTML=h.prices;
+  document.getElementById("notices").innerHTML=h.notices;
+  document.getElementById("quota").innerHTML=h.quota;
+  document.getElementById("foot").innerHTML=h.foot;
+  var sl=document.getElementById("statusline");if(sl)sl.textContent=(st.sources&&st.sources.error)?"目录降级："+st.sources.error:"";
+}
+/* 秒级本地 tick：只重算 [data-cd] 卡的倒计时文本（不重建 DOM，30s load 才全量重绘） */
+function tick(){
+  if(!STATE)return;
+  var now=new Date();
+  sortedWindows(STATE,now).forEach(function(m,i){
+    var el=document.querySelector('[data-cd="'+i+'"]');if(!el)return;
+    var num=el.querySelector("[data-num]"),lbl=el.querySelector("[data-lbl]");
+    if(num)num.textContent=fmtHms(m.r.ms);
+    if(lbl)lbl.textContent=m.r.active?"优惠进行中 · 距结束":"距开始";
+    el.className="cd "+(m.r.active?"on":"off");
+  });
+}
+async function load(){
+  try{var r=await fetch("/api/status");if(!r.ok)return;STATE=await r.json();paint(STATE)}
+  catch(e){var f=document.getElementById("foot");if(f)f.textContent="加载失败: "+e}}
+async function manualRefresh(){
+  if(REFRESHING)return;REFRESHING=true;
+  var btn=document.getElementById("btnRefresh");if(btn)btn.disabled=true;
+  var sl=document.getElementById("statusline");
+  try{
+    var r=await fetch("/api/refresh");
+    if(r.status===429&&sl)sl.textContent="已节流：5 秒内不重复刷新";
+    else if(!r.ok&&sl)sl.textContent="刷新失败（HTTP "+r.status+"）";
+    await load();
+    if(sl&&!sl.textContent&&r.ok)sl.textContent="已刷新";
+    setTimeout(function(){if(sl)sl.textContent="";},3000);
+  }catch(e){if(sl)sl.textContent="刷新失败: "+e}
+  finally{REFRESHING=false;if(btn)btn.disabled=false}}
+/* 浏览器 boot 守卫：node（测试 vm）里无 document/fetch → 仅暴露纯函数，不启动副作用 */
+if(typeof document!=="undefined"&&typeof fetch!=="undefined"){
+  load();
+  setInterval(load,30000);            // 30s 轮询
+  setInterval(tick,1000);             // HH:MM:SS 每秒本地 tick
+  document.addEventListener("visibilitychange",function(){if(!document.hidden)load()}); // 回前台即刷
+  var b=document.getElementById("btnRefresh");if(b)b.addEventListener("click",manualRefresh);
+  document.addEventListener("click",function(ev){
+    var t=ev.target;if(t&&t.id==="pincmd"&&navigator.clipboard){navigator.clipboard.writeText(t.textContent).catch(function(){})}});
+}
 </script></body></html>

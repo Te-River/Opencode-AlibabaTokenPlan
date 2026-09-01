@@ -1,9 +1,13 @@
 // server 插件入口 —— 移植 bailian-discount-panel.ts 全部行为（三级回退/缓存迁移/
 // 端口粘滞/toast/工具/面板），新增：Qoder 快照并入、status.json 原子写、
-// tokenplan_discounts 工具（旧名委托）、config hook 注入 tokenplan 命令、webpanel 默认关。
+// tokenplan_discounts 工具（旧名委托）、config hook 注入 tokenplan 命令。
 //
 // 0.1.2：多实例宿主（桌面版按 workspace/实例多次调用 plugin()）下守卫只挡进程级
 // 副作用，hooks 每实例都完整返回；配置每实例解析；dispose 仅首启实例真清理。
+//
+// 0.1.3 仪表盘优先：webpanel 默认开（主信息面）；slash 默认关（桌面新消息会中断
+// 进行中的回合）；boot 后 5s 一次性摘要 toast；dashboard.autoOpen 探测本机 Edge
+// 以 --app 无边框小窗打开（失败静默，绝不用默认浏览器裸开）。
 //
 // 模块形态（03-D1 / quota dist/index.js 实证）：default export { id, server }，
 // 避免宿主 getLegacyPlugins 兜底路径把命名导出当第二个插件重复装载。
@@ -25,7 +29,7 @@ import { windowState, fmtCountdown } from "../core/rules";
 import { fmtFactor, strikethrough, showStrike } from "../core/text";
 import { isCrossVerified } from "../core/merge";
 import { matchProvider, isProviderMatchMode } from "../core/provider";
-import type { ModelEntry, OfferRule, StatusFile } from "../core/types";
+import type { ModelEntry, OfferRule, StatusFile, WindowView } from "../core/types";
 
 const PKG_ID = "@te-river/opencode-alibabatokenplan";
 
@@ -236,9 +240,11 @@ async function maybeToast(): Promise<void> {
     lastActive.set(w.id, ws.active);
     if (cfgNow?.toast !== false && prev !== undefined && prev !== ws.active && client) {
       const models = w.models.map((m) => `${m.model}${m.effective ? "→" + m.effective : ""}`);
+      // D4：窗口翻转 toast 附仪表盘端口（取当前 server 实际绑定 port）
+      const portHint = boundPort ? `（仪表盘 :${boundPort}）` : "";
       const msg = ws.active
-        ? `${w.label}已开始：${models.join("、")}（至 ${w.end}，北京时间）`
-        : `${w.label}已结束：${models.join("、")}（下次 ${w.start} 开始）`;
+        ? `${w.label}已开始：${models.join("、")}（至 ${w.end}，北京时间）${portHint}`
+        : `${w.label}已结束：${models.join("、")}（下次 ${w.start} 开始）${portHint}`;
       try {
         await client.tui?.showToast?.({ body: { title: "Token Plan 优惠提醒", message: msg, variant: ws.active ? "success" : "info", duration: 8000 } });
       } catch {}
@@ -261,8 +267,22 @@ function renderHtml(): string {
 }
 
 let server: http.Server | null = null;
+let boundPort = 0; // 实际绑定端口（粘滞/漂移后的终值）——toast 与 autoOpen 引用
 const REFRESH_THROTTLE_MS = 5_000;
 let lastRefreshAt = 0; // /api/refresh 进程内节流戳（M2）
+
+/** /api/status 附加的 Qoder 在卖倍率 E 行（快照常量，非 buildStatus 契约字段——
+ *  数据层不动，仅面板 ③ 区消费；textModels.creditsFactor 只覆盖 8 个目录内模型）。 */
+function statusPayload(): string {
+  const st = currentStatus() as StatusFile & { inSale?: { model: string; factor: string; note?: string }[]; boundPort?: number };
+  st.inSale = Object.entries(QODER_INSALE_FACTORS).map(([model, v]) => ({
+    model,
+    factor: fmtFactor(v.factor) ?? String(v.factor),
+    ...(v.note ? { note: v.note } : {}),
+  }));
+  if (boundPort) st.boundPort = boundPort;
+  return JSON.stringify(st);
+}
 
 /** M2 同源校验：Origin 缺省（同源 GET/curl 常不带）或 host 与本服务 Host 完全一致才放行；
  * 请求带 Sec-Fetch-Site 时额外闸——必须 same-origin（浏览器发起的跨站请求会被标记拦截）。 */
@@ -285,7 +305,7 @@ function startPanel(port: number): Promise<string> {
       if (url === "/api/status") {
         // M2：panel 与本服务同源，删除 CORS 通配头（不再允许任意站点跨源读状态）
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-        res.end(JSON.stringify(currentStatus()));
+        res.end(statusPayload());
         return;
       }
       if (url === "/api/refresh") {
@@ -320,10 +340,49 @@ function startPanel(port: number): Promise<string> {
         tryListen();
       });
       // m8：只在 listen 成功回调内赋 server 句柄（旧代码把绑定失败的实例也写进 server，dispose 关错对象）
-      s.listen(p, "127.0.0.1", () => { server = s; savePort(p); resolve(`http://127.0.0.1:${p}`); });
+      s.listen(p, "127.0.0.1", () => { server = s; boundPort = p; savePort(p); resolve(`http://127.0.0.1:${p}`); });
     };
     tryListen();
   });
+}
+
+// ─────────────────────────── D1：dashboard.autoOpen —— Edge --app 无边框小窗 ───────────────────────────
+
+/** 探测本机 msedge/edge 常见安装路径（win 为主，mac 兜底）。返回 null=找不到，
+ *  调用方静默跳过；绝不经默认浏览器裸开（隐私/干扰底线）。 */
+export function findEdgePath(env: NodeJS.ProcessEnv = process.env, exists: (p: string) => boolean = fs.existsSync): string | null {
+  const winDirs = [
+    env["ProgramFiles(x86)"] || "C:\\Program Files (x86)",
+    env["ProgramFiles"] || "C:\\Program Files",
+    env.LOCALAPPDATA ? path.join(env.LOCALAPPDATA, "Programs") : "",
+  ].filter(Boolean);
+  for (const d of winDirs) {
+    for (const exe of ["msedge.exe", "edge.exe"]) {
+      const p = path.join(d, "Microsoft", "Edge", "Application", exe);
+      if (exists(p)) return p;
+    }
+  }
+  const mac = "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge";
+  if (exists(mac)) return mac;
+  return null;
+}
+
+/** 以 --app 无边框小窗打开仪表盘（430×900，与 README 钉窗命令一致）。整进程只试一次
+ *  （失败静默、绝不重开——面板本体仍在，用户可按 README 手工钉）。exe 参数供测试注入。 */
+let autoOpenTried = false;
+export async function tryAutoOpen(url: string, exe?: string | null): Promise<boolean> {
+  if (autoOpenTried) return false;
+  autoOpenTried = true;
+  const bin = exe === undefined ? findEdgePath() : exe;
+  if (!bin) return false;
+  try {
+    const child = cp.spawn(bin, ["--app=" + url, "--window-size=430,900"], { detached: true, stdio: "ignore" });
+    child.on("error", () => {}); // 静默：探测期后二进制被删/权限拒绝等
+    child.unref();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ─────────────────────────── 工具（新名实现 + 旧名委托） ───────────────────────────
@@ -383,6 +442,15 @@ function renderToolOutput(filter: string): string {
 
 // ─────────────────────────── R1：桌面命令通道（command.execute.before 确定性输出） ───────────────────────────
 
+/** 窗口状态行（label + 时段 + 激活态 + 倒计时）——renderDesktopSummary 与 C2 启动
+ *  toast 共用同一渲染逻辑（toast 是其裁剪版，不重复实现）。 */
+function windowHeadline(w: WindowView, s: ReturnType<typeof windowState>): string {
+  const cd = s.active
+    ? `${fmtCountdown(s.minutesToNextBoundary)}后结束（${w.end}）`
+    : `${fmtCountdown(s.minutesToNextBoundary)}后开始（${w.start}）`;
+  return `${s.active ? "▸" : "▹"} ${w.label} ${w.start}–${w.end} ${s.active ? "优惠中" : "未开始"} · ${cd}`;
+}
+
 /** 紧凑优惠摘要——桌面（无 TUI 渲染层）唯一可靠通道是转录文本，这里做确定性渲染。
  *  providerID 仅用于「非阿里系」前缀注明；本函数不做门控（显式调用总是可用，R2 边界）。 */
 export function renderDesktopSummary(filter = "", providerID?: string): string {
@@ -402,10 +470,7 @@ export function renderDesktopSummary(filter = "", providerID?: string): string {
   const ordered = [...wss.filter((x) => x.s.active), ...wss.filter((x) => !x.s.active)]
     .filter((x) => !filter || x.w.models.some((m) => match(m.model)));
   for (const { w, s } of ordered.slice(0, 2)) {
-    const cd = s.active
-      ? `${fmtCountdown(s.minutesToNextBoundary)}后结束（${w.end}）`
-      : `${fmtCountdown(s.minutesToNextBoundary)}后开始（${w.start}）`;
-    lines.push(`${s.active ? "▸" : "▹"} ${w.label} ${w.start}–${w.end} ${s.active ? "优惠中" : "未开始"} · ${cd}`);
+    lines.push(windowHeadline(w, s));
     for (const m of w.models.filter((x) => match(x.model)).slice(0, 6)) {
       const strike = showStrike(parseFloat(m.regular ?? ""), parseFloat(m.effective ?? ""));
       lines.push(`   ${m.model} ${strike ? strikethrough(m.regular!) + " " : ""}${m.effective ?? ""} ${m.badge ?? ""}${isCrossVerified(m) ? " [双源印证]" : ""}`);
@@ -433,6 +498,49 @@ export function renderDesktopSummary(filter = "", providerID?: string): string {
   return lines.join("\n");
 }
 
+// ─────────────────────────── C2：启动一次性摘要 toast（0.1.3 去中断化） ───────────────────────────
+
+const BOOT_TOAST_DELAY_MS = 5_000; // 等 client/TUI 就绪的宽限
+let bootToastSent = false; // 整进程只发一次（含多 workspace 实例场景）
+
+/** 启动 toast 的 compact 2–3 行摘要（D4）：窗口行复用 windowHeadline
+ *  （renderDesktopSummary 同源裁剪版），倍率取首个最优窗前 3 模型，
+ *  末行指向仪表盘（附实际绑定端口；slash 默认关，不再引导 /tokenplan 命令）。 */
+export function renderBootToast(now = new Date()): string {
+  const st = currentStatus();
+  const wss = st.windows.map((w) => ({ w, s: windowState(w, now) }));
+  const ordered = [...wss.filter((x) => x.s.active), ...wss.filter((x) => !x.s.active)];
+  const hint = dashboardHintLine() || "数据查询：tokenplan_discounts 工具";
+  if (!ordered.length) return ["雷达：当前无优惠窗口", hint].join("\n");
+  const { w, s } = ordered[0];
+  const models = w.models.slice(0, 3).map((m) => `${m.model} ${m.effective ?? ""}`.trim()).join(" · ");
+  return [windowHeadline(w, s), models, hint].join("\n");
+}
+
+/** 仪表盘指引行（D4：附当前 server 实际绑定端口；面板未启动=空串不带噪音）。 */
+function dashboardHintLine(): string {
+  return boundPort ? `仪表盘: http://127.0.0.1:${boundPort}` : "";
+}
+
+/** 发送启动摘要 toast（双闸：cfg.toast && cfg.toastOnBoot；无 client 静默跳过且不烧
+ *  一次性标志）。返回是否实际发起（并发重入/已发过=false）。 */
+async function sendBootToast(cfg: AtpConfig, now = new Date()): Promise<boolean> {
+  if (bootToastSent || !cfg.toast || !cfg.toastOnBoot) return false;
+  if (!client) return false;
+  let message: string, active: boolean;
+  try {
+    message = renderBootToast(now);
+    active = currentStatus().windows.some((w) => windowState(w, now).active);
+  } catch {
+    return false;
+  }
+  bootToastSent = true; // 先落键再 await（m6 同款竞态序：重入不双弹）
+  try {
+    await client.tui?.showToast?.({ body: { title: "Token Plan 雷达", message, variant: active ? "success" : "info", duration: 10_000 } });
+  } catch {}
+  return true;
+}
+
 /** R1 拦截实现（机制依据桌面 app.asar 实证，详见 11 号报告）：
  *  宿主在 trigger("command.execute.before", input, {parts}) 之后**无条件**用同一 parts 数组调 prompt()，
  *  且模型请求只收 `text && !ignored && text!==""` 的部分 → 原地重写 parts 为
@@ -458,11 +566,13 @@ export async function handleTokenplanCommand(input: any, output: any): Promise<v
   } catch {
     return; // fail-open：保持宿主默认命令流转
   }
+  // C3（0.1.3）：桌面不隐藏 synthetic 部件（用户实测）→ 旧长指令会整段露在转录。
+  // 指令缩成单句；给人看的机制说明挪进 ignored 摘要尾部一行（用户可见、模型不可见）。
   parts.length = 0;
-  parts.push({ type: "text", text, ignored: true });
+  parts.push({ type: "text", text: text + "\n（摘要由插件写入，模型不可见）", ignored: true });
   parts.push({
     type: "text",
-    text: `插件已把 Token Plan 优惠摘要直接写入本条消息（ignored 部分不进入你的上下文）。请仅回复一句「✅ 优惠摘要已展示（数据截至 ${QODER_SNAPSHOT_DATE}）」，不要复述摘要内容、不要调用任何工具。`,
+    text: "仅回复一词：✅（不要复述上文，不要调用工具）",
     synthetic: true,
   });
 }
@@ -489,7 +599,7 @@ function resolveConfig(options?: any): AtpConfig {
     const extra = typeof options === "string" ? undefined : options;
     if (extra && typeof extra === "object") {
       const merged = JSON.parse(JSON.stringify(cfg));
-      for (const k of ["webpanel", "sidebar", "toast", "refresh", "providerMatch"]) {
+      for (const k of ["webpanel", "sidebar", "toast", "refresh", "providerMatch", "slash", "toastOnBoot", "dashboard"]) {
         const v = (extra as any)[k];
         if (v === undefined) continue;
         // m7：toast 等布尔/标量键直接赋值——旧 Object.assign(bool, v) 静默失效/抛错
@@ -515,19 +625,24 @@ async function bootProcess(cfg: AtpConfig): Promise<() => void> {
 
   if (cfg.webpanel.enabled) {
     const panelUrl = await startPanel(cfg.webpanel.port);
-    console.log(`[alibabatokenplan] 面板已启动: ${panelUrl || "启动失败（端口耗尽）"}`);
+    console.log(`[alibabatokenplan] 仪表盘已启动（主界面）: ${panelUrl || "启动失败（端口耗尽）"}`);
+    // D1：autoOpen 只在拿到实际绑定 URL 后尝试一次；失败静默、不重开、绝不用默认浏览器
+    if (panelUrl && cfg.dashboard.autoOpen) void tryAutoOpen(panelUrl).catch(() => {});
   }
 
   const catalogTimer = setInterval(() => { refreshCatalog(cfg).catch(() => {}); }, cfg.refresh.catalogMin * 60_000);
   const quotaTimer = setInterval(() => { refreshQuota().catch(() => {}); }, cfg.refresh.quotaMin * 60_000);
   const tickTimer = setInterval(() => { if (cfg.toast) maybeToast().catch(() => {}); publishStatus(); }, 60_000);
-  for (const t of [catalogTimer, quotaTimer, tickTimer]) t.unref?.();
+  // D4：boot 后 5s 一次性摘要 toast（双闸在 sendBootToast 内；无 client 不烧标志）
+  const bootToastTimer = setTimeout(() => { void sendBootToast(cfg).catch(() => {}); }, BOOT_TOAST_DELAY_MS);
+  for (const t of [catalogTimer, quotaTimer, tickTimer, bootToastTimer]) t.unref?.();
 
   // m8：宿主卸载 → 关面板 server + 清全部定时器，不留端口/句柄/后台刷新泄漏
   return () => {
-    for (const t of [catalogTimer, quotaTimer, tickTimer]) clearInterval(t);
+    for (const t of [catalogTimer, quotaTimer, tickTimer, bootToastTimer]) clearInterval(t);
     try { server?.close(); } catch {}
     server = null;
+    boundPort = 0;
   };
 }
 
@@ -574,6 +689,10 @@ const plugin = async (input: any, options?: any) => {
     // F3：首启实例 → bootProcess 的真实清理（m8）；后启实例 → no-op
     dispose: () => { shutdown(); },
     config: async (config: any) => {
+      // D3（0.1.3）：slash 默认 false——桌面版任何新消息都会中断进行中的回合，
+      // 转录注入命令对开发流有破坏性，斜杠菜单彻底不出现。命令与拦截代码全保留，
+      // 配置 slash=true 即恢复 0.1.1 行为（含 handleTokenplanCommand 的 parts 重写）。
+      if (!cfg.slash) return;
       // R1 主路径由 command.execute.before 确定性重写；此 template 是 fail-open 兜底
       // （宿主 hook 异常/无 client 时才走 LLM，接受 token 成本并注明）
       config.command = config.command ?? {};
@@ -611,4 +730,12 @@ export const __testing = {
   // 0.1.2 多实例回归锚点（F5）：boot 计数 + 可注入进程级副作用（仅测试环境替换）
   get bootCount() { return bootCount; },
   setBootOverride: (fn: BootOverride | null) => { bootOverride = fn; },
+  // 0.1.3 仪表盘优先回归锚点：boot toast（D4）/ autoOpen 探测（D1）/ 面板 inSale 载荷（D2③）
+  renderBootToast,
+  sendBootToast,
+  resetBootToast: () => { bootToastSent = false; autoOpenTried = false; },
+  tryAutoOpen,
+  findEdgePath,
+  setBoundPort: (p: number) => { boundPort = p; },
+  statusPayload,
 };

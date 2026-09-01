@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import vm from "node:vm";
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "atp-test-"));
 process.env.ATP_STATE_DIR = path.join(tmp, "state");
@@ -352,8 +353,10 @@ test("多实例：连续两次 plugin() 都返回完整 hooks，boot 仅一次�
     return () => { cleans++; };
   });
   try {
-    const inst1 = await srv.AliBabaTokenPlanPlugin({ client: { tag: "ws1" } });
-    const inst2 = await srv.AliBabaTokenPlanPlugin({ client: { tag: "ws2" } }, { toast: false });
+    // 0.1.3：slash 默认 false（不再注入 /tokenplan）——本用例测的是「每实例都返回完整
+    // hooks + boot 一次」，注入断言需显式开 slash:true（缺省行为由 D6 slash 用例覆盖）
+    const inst1 = await srv.AliBabaTokenPlanPlugin({ client: { tag: "ws1" } }, { slash: true });
+    const inst2 = await srv.AliBabaTokenPlanPlugin({ client: { tag: "ws2" } }, { toast: false, slash: true });
     // ① 修复前的病灶：inst2 = {event,dispose} 存根。现在两次返回值都必须含全 hooks
     for (const [i, inst] of [[1, inst1], [2, inst2]]) {
       assert.equal(typeof inst.config, "function", `实例${i}：config hook 必须存在`);
@@ -380,4 +383,154 @@ test("多实例：连续两次 plugin() 都返回完整 hooks，boot 仅一次�
   } finally {
     t.setBootOverride(null);
   }
+});
+
+// ═════════════════ 0.1.3 仪表盘优先（D1/D3/D4/D6：默认值·slash 门控·boot toast·autoOpen·面板渲染） ═════════════════
+
+test("D1 配置默认值：webpanel.enabled=true（仪表盘主界面）/ dashboard.autoOpen=false；slash=false / toastOnBoot=true", () => {
+  process.env.ATP_CONFIG_DIR = path.join(tmp, "cfg-13-empty");
+  const c = core.loadConfig();
+  assert.equal(c.webpanel.enabled, true);
+  assert.equal(c.webpanel.port, 7777);
+  assert.equal(c.dashboard.autoOpen, false);
+  assert.equal(c.slash, false);
+  assert.equal(c.toastOnBoot, true);
+  fs.mkdirSync(process.env.ATP_CONFIG_DIR, { recursive: true });
+  fs.writeFileSync(path.join(process.env.ATP_CONFIG_DIR, "config.jsonc"),
+    `{ "webpanel": { "enabled": false, "port": 8123 }, "dashboard": { "autoOpen": true }, "slash": true }`);
+  const c2 = core.loadConfig(); // 显式关面板=允许（粘滞端口逻辑保留）
+  assert.equal(c2.webpanel.enabled, false);
+  assert.equal(c2.webpanel.port, 8123);
+  assert.equal(c2.dashboard.autoOpen, true);
+  assert.equal(c2.slash, true);
+  delete process.env.ATP_CONFIG_DIR;
+});
+
+test("D3 slash 门控：缺省不注入命令（斜杠菜单消失）、显式 true 恢复 0.1.1 注入；工具不受影响", async () => {
+  const dir = path.join(tmp, "cfg-13-slash");
+  fs.mkdirSync(dir, { recursive: true });
+  process.env.ATP_CONFIG_DIR = dir;
+  try {
+    const inst = await srv.AliBabaTokenPlanPlugin({ client: null }); // 缺省 slash=false
+    const o1 = {};
+    await inst.config(o1);
+    assert.equal(o1.command, undefined, "slash=false 时 config hook 不得注入 command.tokenplan");
+    assert.ok(inst.tool?.tokenplan_discounts && inst["command.execute.before"], "工具与拦截 hook 本体保留");
+    const inst2 = await srv.AliBabaTokenPlanPlugin({ client: null }, { slash: true });
+    const o2 = {};
+    await inst2.config(o2);
+    assert.ok(o2.command?.tokenplan?.template, "slash=true 恢复注入（tuple options 覆盖文件默认）");
+  } finally {
+    delete process.env.ATP_CONFIG_DIR;
+  }
+});
+
+test("D4 boot toast：2-3 行含窗口行+端口指引；无 client 静默不烧标志；整进程一次；双闸生效", async () => {
+  const t = srv.__testing;
+  t.resetBootToast();
+  t.setBoundPort(7777);
+  const msg = t.renderBootToast(new Date());
+  assert.match(msg, /[▸▹] .+ \d{2}:\d{2}–\d{2}:\d{2}/, "窗口行（label+时段）");
+  assert.ok(/仪表盘: http:\/\/127\.0\.0\.1:7777/.test(msg), `toast 须附实际绑定端口，实际: ${msg}`);
+  assert.ok(msg.split("\n").length <= 3);
+  t.setClient(null);
+  assert.equal(await t.sendBootToast(core.DEFAULT_CONFIG), false, "无 client → 不烧标志");
+  let calls = 0;
+  t.setClient({ tui: { showToast: () => { calls++; return Promise.resolve(); } } });
+  assert.equal(await t.sendBootToast(core.DEFAULT_CONFIG), true, "client 补上后仍可发（前次未烧标志）");
+  assert.equal(calls, 1);
+  assert.equal(await t.sendBootToast(core.DEFAULT_CONFIG), false, "整进程一次");
+  assert.equal(calls, 1);
+  t.resetBootToast();
+  assert.equal(await t.sendBootToast({ ...core.DEFAULT_CONFIG, toast: false }), false, "toast 总开关闸");
+  assert.equal(await t.sendBootToast({ ...core.DEFAULT_CONFIG, toastOnBoot: false }), false, "toastOnBoot 闸");
+  t.resetBootToast();
+  t.setClient({}); // 无 tui.showToast 路径也不得抛
+  await t.sendBootToast(core.DEFAULT_CONFIG);
+  t.setClient(null);
+  t.resetBootToast();
+  t.setBoundPort(0);
+});
+
+test("D1 autoOpen：探测失败返回 false 不抛；显式坏路径 spawn 失败静默；整进程只试一次", async () => {
+  const t = srv.__testing;
+  assert.equal(typeof t.findEdgePath, "function");
+  assert.equal(t.findEdgePath({}, () => false), null, "空 env+全部 miss → null（绝不抛）");
+  const hit = t.findEdgePath({ "ProgramFiles(x86)": "X:\\PF" }, (p) => p === "X:\\PF\\Microsoft\\Edge\\Application\\msedge.exe");
+  assert.equal(hit, "X:\\PF\\Microsoft\\Edge\\Application\\msedge.exe", "命中常见安装路径");
+  t.resetBootToast();
+  assert.equal(await t.tryAutoOpen("http://127.0.0.1:7777", null), false, "探测不到 Edge=静默 false");
+  assert.equal(await t.tryAutoOpen("http://127.0.0.1:7777", "Z:\\no-such.exe"), false, "一次性：首试已消耗（失败绝不重开）");
+  t.resetBootToast();
+  const r = await t.tryAutoOpen("http://127.0.0.1:7777", "Z:\\no-such-maybe-exe.exe"); // ENOENT 走 error 事件=静默
+  assert.equal(typeof r, "boolean", "spawn 失败路径只要求不抛");
+  t.resetBootToast();
+});
+
+// ── D2 面板：静态结构 + 零外部依赖 + 纯渲染函数（node vm 直跑 boot 守卫外的部分） ──
+
+const PANEL_HTML = fs.readFileSync(new URL("../src/server/panel.html", import.meta.url), "utf8");
+
+function panelSandbox() {
+  const m = PANEL_HTML.match(/<script>([\s\S]*?)<\/script>/);
+  assert.ok(m, "panel.html 缺内联 <script>");
+  // vm 新 ES2019+ 不再把顶层 var/function 镜像回 sandbox 对象 → 脚本内显式导出到 exports 哨兵
+  const src = m[1] + "\n;exports.esc=esc;exports.fmtHms=fmtHms;exports.winRemain=winRemain;exports.sortedWindows=sortedWindows;"
+    + "exports.renderTopbar=renderTopbar;exports.renderWindows=renderWindows;exports.renderInSale=renderInSale;"
+    + "exports.renderPrices=renderPrices;exports.renderNotices=renderNotices;exports.renderQuota=renderQuota;"
+    + "exports.renderFooter=renderFooter;exports.renderAll=renderAll;"
+    + "Object.defineProperties(exports,{STATE:{get:()=>STATE,set:v=>{STATE=v}}});";
+  const ctx = vm.createContext({ exports: {}, console, setTimeout, setInterval: undefined, fetch: undefined, document: undefined });
+  vm.runInContext(src, ctx);
+  return ctx.exports;
+}
+
+test("D2 面板静态冒烟：七大区块容器齐备、内联脚本、零 CDN/外链资源", () => {
+  for (const id of ["windows", "insale", "prices", "notices", "quota", "foot", "btnRefresh", "srcinfo"])
+    assert.ok(PANEL_HTML.includes(`id="${id}"`), `缺容器 #${id}`);
+  assert.ok(PANEL_HTML.includes("钉为独立小窗"), "缺「钉为独立窗口」提示区");
+  assert.ok(/start msedge --app=http:\/\/127\.0\.0\.1:/.test(PANEL_HTML), "缺可复制完整钉窗命令");
+  assert.ok(!/<script[^>]+src=|<link[^>]+href=|@import|https?:\/\/[^"']*\.css/i.test(PANEL_HTML), "零外部 CDN/字体/样式依赖");
+});
+
+test("D2 面板渲染：buildStatus 样例 → 0.25x/截至 2026-08-31/错峰 在场，HH:MM:SS tick 函数正确", () => {
+  const sb = panelSandbox();
+  const st = buildStatus(catalog(), new Date("2026-08-31T15:00:00+08:00"));
+  st.inSale = [{ model: "kimi-k2.7-code", factor: "0.3x", note: "highspeed 0.6" }]; // /api/status 附加载荷
+  sb.STATE = st;
+  assert.equal(sb.fmtHms(19421000), "05:23:41"); // 秒级倒计时串
+  const win = sb.renderWindows(st, new Date("2026-08-31T15:00:00+08:00"));
+  assert.ok(win.includes("0.25x") && win.includes("0.5x"), "窗内模型行：0.5x→0.25x 划线价对");
+  assert.ok(win.includes("错峰") && /<s>0\.5x<\/s>/.test(win), "错峰标签 + strikethrough baseFactor");
+  assert.ok(/data-cd="\d+"/.test(win) && /data-num/.test(win), "每秒 tick 锚点 data-cd/data-num");
+  const inSale = sb.renderInSale(st, new Date("2026-08-31T15:00:00+08:00"));
+  assert.ok(inSale.includes("截至 2026-08-31"), "③ 区脚注含快照截至日");
+  assert.ok(inSale.includes("Qoder Credits 消耗系数"), "③ 区脚注口径声明");
+  assert.ok(inSale.includes("highspeed 0.6"), "E 行备注列");
+  assert.ok(inSale.includes("限时"), "flat-cut 合并行带「限时」标签");
+  const prices = sb.renderPrices(st);
+  assert.ok(prices.includes("峰 / 谷") && prices.includes("deepseek-v4-pro-0813"), "④ textModels 峰谷双列");
+  assert.ok(prices.includes("永不互算"), "④ 区脚注：与 Qoder 倍率分面不混排");
+  const notices = sb.renderNotices(st, new Date("2026-08-31T15:00:00+08:00"));
+  assert.ok(notices.includes("800/2000") && notices.includes("已过期 2026-07-30"), "⑤ free-calls claim/过期置灰");
+  assert.ok(notices.includes("lite"), "⑤ policy 降级政策行");
+  const foot = sb.renderFooter(st);
+  assert.ok(foot.includes("钉为独立小窗") && foot.includes("--window-size=430,900"), "⑦ 钉窗命令提示区");
+});
+
+test("D2 面板转义：所有动态值经 esc()/safeUrl——注入样本不出裸标签，javascript: 链被丢弃", () => {
+  const sb = panelSandbox();
+  const evil = '<img src=x onerror="alert(1)">';
+  const st = buildStatus(catalog(), new Date("2026-08-31T15:00:00+08:00"));
+  st.windows = [{ ...st.windows[0], label: evil, models: [{ ...st.windows[0].models[0], model: evil, badge: evil, links: ["javascript:alert(1)", "https://ok.example/x"] }] }];
+  st.offers = st.offers.map((o) => ({ ...o, label: evil, note: evil, links: ["javascript:alert(1)"] }));
+  st.inSale = [{ model: evil, factor: evil, note: evil }];
+  st.notices = [{ kind: "policy", text: evil, source: evil, expired: false }];
+  st.textModels = [{ model: evil, input: evil, cache: evil, output: evil }];
+  st.quota = { available: false, hint: evil };
+  const all = sb.renderWindows(st, new Date()) + sb.renderInSale(st, new Date()) + sb.renderPrices(st) + sb.renderNotices(st, new Date()) + sb.renderQuota(st) + sb.renderFooter(st) + sb.renderTopbar(st).src;
+  assert.ok(!/<img src=x/.test(all), "裸 <img> 注入串绝不允许出现在任何区块 HTML");
+  assert.ok(!/javascript:/.test(all), "非 http(s) 链接一律不进 href");
+  assert.ok(all.includes("&lt;img src=x onerror=&quot;alert(1)&quot;&gt;"), "对应位置为转义后文本");
+  assert.ok(all.includes('href="https://ok.example/x"') && all.includes('target="_blank" rel="noopener"'), "合法 https 外链保留 target=_blank rel=noopener");
 });

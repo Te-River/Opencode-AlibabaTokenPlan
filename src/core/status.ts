@@ -8,7 +8,7 @@ import { windowState, fmtCountdown } from "./rules";
 import { fmtFactor } from "./text";
 import { isProviderMatchMode, type ProviderMatchMode } from "./provider";
 
-export const WRITTEN_BY = "@te-river/opencode-alibabatokenplan/server@0.1.2";
+export const WRITTEN_BY = "@te-river/opencode-alibabatokenplan/server@0.1.3";
 export const STALE_AFTER_SEC = 600;
 
 export interface CatalogInput {
@@ -337,14 +337,26 @@ export interface AtpConfig {
   refresh: { catalogMin: number; quotaMin: number };
   /** R2：TUI 侧栏/home 门控模式。family=阿里系全家族（默认，alibaba-cn 会话也显示）；strict=0.1.0 的 token-plan 专属正则。 */
   providerMatch: ProviderMatchMode;
+  /** C1（0.1.3 去中断化）：桌面版任何新消息都会中断进行中的回合（宿主固有行为），
+   *  /tokenplan 转录注入对开发流有破坏性 → 默认 false：config hook 不注入命令，斜杠菜单彻底消失。 */
+  slash: boolean;
+  /** C2：server 启动 5s 后的一次性摘要 toast（受 toast 总开关叠加控制）。默认 true。 */
+  toastOnBoot: boolean;
+  /** C1（0.1.3 仪表盘优先）：true 时 bootProcess 探测本机 msedge/edge 以 --app=<url>
+   *  无边框小窗打开仪表盘；探测失败/启动失败静默，绝不回退默认浏览器裸开。默认 false。 */
+  dashboard: { autoOpen: boolean };
 }
 
 export const DEFAULT_CONFIG: AtpConfig = {
-  webpanel: { enabled: false, port: 7777 },
+  // 0.1.3：仪表盘是主界面（桌面实证：无 TUI 渲染层，web 面板是唯一持久信息面）→ 默认开
+  webpanel: { enabled: true, port: 7777 },
   sidebar: { order: 160, showNonTokenPlan: false },
   toast: true,
   refresh: { catalogMin: 10, quotaMin: 5 },
   providerMatch: "family",
+  slash: false,
+  toastOnBoot: true,
+  dashboard: { autoOpen: false },
 };
 
 export function loadConfig(): AtpConfig {
@@ -361,6 +373,9 @@ export function loadConfig(): AtpConfig {
       if (Number.isInteger(raw.refresh?.catalogMin) && raw.refresh.catalogMin > 0) d.refresh.catalogMin = raw.refresh.catalogMin;
       if (Number.isInteger(raw.refresh?.quotaMin) && raw.refresh.quotaMin > 0) d.refresh.quotaMin = raw.refresh.quotaMin;
       if (isProviderMatchMode(raw.providerMatch)) d.providerMatch = raw.providerMatch; // 非法值→保持默认 family
+      if (raw.slash !== undefined) d.slash = !!raw.slash;
+      if (raw.toastOnBoot !== undefined) d.toastOnBoot = !!raw.toastOnBoot;
+      if (raw.dashboard?.autoOpen !== undefined) d.dashboard.autoOpen = !!raw.dashboard.autoOpen;
     }
   } catch {
     /* 缺失/坏 JSON = 全默认（契约 §4） */

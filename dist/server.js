@@ -492,7 +492,7 @@ function isProviderMatchMode(v) {
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-var WRITTEN_BY = "@te-river/opencode-alibabatokenplan/server@0.1.2";
+var WRITTEN_BY = "@te-river/opencode-alibabatokenplan/server@0.1.3";
 var STALE_AFTER_SEC = 600;
 var CATALOG_ORIGIN = {
   live: "bailian-live",
@@ -772,11 +772,15 @@ function parseJsonc(text) {
   return JSON.parse(res);
 }
 var DEFAULT_CONFIG = {
-  webpanel: { enabled: false, port: 7777 },
+  // 0.1.3：仪表盘是主界面（桌面实证：无 TUI 渲染层，web 面板是唯一持久信息面）→ 默认开
+  webpanel: { enabled: true, port: 7777 },
   sidebar: { order: 160, showNonTokenPlan: false },
   toast: true,
   refresh: { catalogMin: 10, quotaMin: 5 },
-  providerMatch: "family"
+  providerMatch: "family",
+  slash: false,
+  toastOnBoot: true,
+  dashboard: { autoOpen: false }
 };
 function loadConfig() {
   const d = structuredClone(DEFAULT_CONFIG);
@@ -791,6 +795,9 @@ function loadConfig() {
       if (Number.isInteger(raw.refresh?.catalogMin) && raw.refresh.catalogMin > 0) d.refresh.catalogMin = raw.refresh.catalogMin;
       if (Number.isInteger(raw.refresh?.quotaMin) && raw.refresh.quotaMin > 0) d.refresh.quotaMin = raw.refresh.quotaMin;
       if (isProviderMatchMode(raw.providerMatch)) d.providerMatch = raw.providerMatch;
+      if (raw.slash !== void 0) d.slash = !!raw.slash;
+      if (raw.toastOnBoot !== void 0) d.toastOnBoot = !!raw.toastOnBoot;
+      if (raw.dashboard?.autoOpen !== void 0) d.dashboard.autoOpen = !!raw.dashboard.autoOpen;
     }
   } catch {
   }
@@ -1032,7 +1039,8 @@ async function maybeToast() {
     lastActive.set(w.id, ws.active);
     if (cfgNow?.toast !== false && prev !== void 0 && prev !== ws.active && client) {
       const models = w.models.map((m) => `${m.model}${m.effective ? "\u2192" + m.effective : ""}`);
-      const msg = ws.active ? `${w.label}\u5DF2\u5F00\u59CB\uFF1A${models.join("\u3001")}\uFF08\u81F3 ${w.end}\uFF0C\u5317\u4EAC\u65F6\u95F4\uFF09` : `${w.label}\u5DF2\u7ED3\u675F\uFF1A${models.join("\u3001")}\uFF08\u4E0B\u6B21 ${w.start} \u5F00\u59CB\uFF09`;
+      const portHint = boundPort ? `\uFF08\u4EEA\u8868\u76D8 :${boundPort}\uFF09` : "";
+      const msg = ws.active ? `${w.label}\u5DF2\u5F00\u59CB\uFF1A${models.join("\u3001")}\uFF08\u81F3 ${w.end}\uFF0C\u5317\u4EAC\u65F6\u95F4\uFF09${portHint}` : `${w.label}\u5DF2\u7ED3\u675F\uFF1A${models.join("\u3001")}\uFF08\u4E0B\u6B21 ${w.start} \u5F00\u59CB\uFF09${portHint}`;
       try {
         await client.tui?.showToast?.({ body: { title: "Token Plan \u4F18\u60E0\u63D0\u9192", message: msg, variant: ws.active ? "success" : "info", duration: 8e3 } });
       } catch {
@@ -1051,8 +1059,19 @@ function renderHtml() {
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>Token Plan \u4F18\u60E0\u96F7\u8FBE</title></head><body><pre id="p">\u52A0\u8F7D\u4E2D\u2026</pre><script>async function l(){var r=await fetch("/api/status");document.getElementById("p").textContent=JSON.stringify(await r.json(),null,2)}l();setInterval(l,30000);</script></body></html>`;
 }
 var server = null;
+var boundPort = 0;
 var REFRESH_THROTTLE_MS = 5e3;
 var lastRefreshAt = 0;
+function statusPayload() {
+  const st = currentStatus();
+  st.inSale = Object.entries(QODER_INSALE_FACTORS).map(([model, v]) => ({
+    model,
+    factor: fmtFactor(v.factor) ?? String(v.factor),
+    ...v.note ? { note: v.note } : {}
+  }));
+  if (boundPort) st.boundPort = boundPort;
+  return JSON.stringify(st);
+}
 function isSameOrigin(req) {
   const origin = req.headers.origin;
   if (origin !== void 0) {
@@ -1074,7 +1093,7 @@ function startPanel(port) {
       const url = (req.url || "/").split("?")[0];
       if (url === "/api/status") {
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-        res.end(JSON.stringify(currentStatus()));
+        res.end(statusPayload());
         return;
       }
       if (url === "/api/refresh") {
@@ -1120,12 +1139,45 @@ function startPanel(port) {
       });
       s.listen(p, "127.0.0.1", () => {
         server = s;
+        boundPort = p;
         savePort(p);
         resolve(`http://127.0.0.1:${p}`);
       });
     };
     tryListen();
   });
+}
+function findEdgePath(env = process.env, exists = fs2.existsSync) {
+  const winDirs = [
+    env["ProgramFiles(x86)"] || "C:\\Program Files (x86)",
+    env["ProgramFiles"] || "C:\\Program Files",
+    env.LOCALAPPDATA ? path2.join(env.LOCALAPPDATA, "Programs") : ""
+  ].filter(Boolean);
+  for (const d of winDirs) {
+    for (const exe of ["msedge.exe", "edge.exe"]) {
+      const p = path2.join(d, "Microsoft", "Edge", "Application", exe);
+      if (exists(p)) return p;
+    }
+  }
+  const mac = "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge";
+  if (exists(mac)) return mac;
+  return null;
+}
+var autoOpenTried = false;
+async function tryAutoOpen(url, exe) {
+  if (autoOpenTried) return false;
+  autoOpenTried = true;
+  const bin = exe === void 0 ? findEdgePath() : exe;
+  if (!bin) return false;
+  try {
+    const child = cp.spawn(bin, ["--app=" + url, "--window-size=430,900"], { detached: true, stdio: "ignore" });
+    child.on("error", () => {
+    });
+    child.unref();
+    return true;
+  } catch {
+    return false;
+  }
 }
 async function loadToolHelper() {
   try {
@@ -1180,6 +1232,10 @@ function renderToolOutput(filter) {
   lines.push("\u53E3\u5F84\uFF1A\u6D88\u8017/Cost \u5355\u4F4D Credit\uFF1BruntimeConfig \u4F1A\u53D8\u5B9E\u9645\u6D88\u8017\uFF1B\u6298\u6263\u4EE5\u63A7\u5236\u53F0\u8D26\u5355\u4E3A\u51C6\u3002");
   return lines.join("\n");
 }
+function windowHeadline(w, s) {
+  const cd = s.active ? `${fmtCountdown(s.minutesToNextBoundary)}\u540E\u7ED3\u675F\uFF08${w.end}\uFF09` : `${fmtCountdown(s.minutesToNextBoundary)}\u540E\u5F00\u59CB\uFF08${w.start}\uFF09`;
+  return `${s.active ? "\u25B8" : "\u25B9"} ${w.label} ${w.start}\u2013${w.end} ${s.active ? "\u4F18\u60E0\u4E2D" : "\u672A\u5F00\u59CB"} \xB7 ${cd}`;
+}
 function renderDesktopSummary(filter = "", providerID) {
   const st = currentStatus();
   const now = /* @__PURE__ */ new Date();
@@ -1199,8 +1255,7 @@ function renderDesktopSummary(filter = "", providerID) {
   const wss = st.windows.map((w) => ({ w, s: windowState(w, now) }));
   const ordered = [...wss.filter((x) => x.s.active), ...wss.filter((x) => !x.s.active)].filter((x) => !filter || x.w.models.some((m) => match(m.model)));
   for (const { w, s } of ordered.slice(0, 2)) {
-    const cd = s.active ? `${fmtCountdown(s.minutesToNextBoundary)}\u540E\u7ED3\u675F\uFF08${w.end}\uFF09` : `${fmtCountdown(s.minutesToNextBoundary)}\u540E\u5F00\u59CB\uFF08${w.start}\uFF09`;
-    lines.push(`${s.active ? "\u25B8" : "\u25B9"} ${w.label} ${w.start}\u2013${w.end} ${s.active ? "\u4F18\u60E0\u4E2D" : "\u672A\u5F00\u59CB"} \xB7 ${cd}`);
+    lines.push(windowHeadline(w, s));
     for (const m of w.models.filter((x) => match(x.model)).slice(0, 6)) {
       const strike = showStrike(parseFloat(m.regular ?? ""), parseFloat(m.effective ?? ""));
       lines.push(`   ${m.model} ${strike ? strikethrough(m.regular) + " " : ""}${m.effective ?? ""} ${m.badge ?? ""}${isCrossVerified(m) ? " [\u53CC\u6E90\u5370\u8BC1]" : ""}`);
@@ -1227,6 +1282,38 @@ function renderDesktopSummary(filter = "", providerID) {
   lines.push(`\u53E3\u5F84\uFF1A\u65F6\u533A Asia/Shanghai\uFF1B1 \u5143 = ${CREDITS_PER_YUAN} Credits\uFF08\u8BA1\u8D39\u793A\u4F8B\u6362\u7B97\uFF0C\u975E\u5B98\u65B9\u6C47\u7387\uFF09\uFF1B\u6D88\u8017/Cost \u5355\u4F4D Credit\uFF1BruntimeConfig \u4F1A\u53D8\u5B9E\u9645\u6D88\u8017\uFF1B\u6298\u6263\u4EE5\u63A7\u5236\u53F0\u8D26\u5355\u4E3A\u51C6\u3002`);
   return lines.join("\n");
 }
+var BOOT_TOAST_DELAY_MS = 5e3;
+var bootToastSent = false;
+function renderBootToast(now = /* @__PURE__ */ new Date()) {
+  const st = currentStatus();
+  const wss = st.windows.map((w2) => ({ w: w2, s: windowState(w2, now) }));
+  const ordered = [...wss.filter((x) => x.s.active), ...wss.filter((x) => !x.s.active)];
+  const hint = dashboardHintLine() || "\u6570\u636E\u67E5\u8BE2\uFF1Atokenplan_discounts \u5DE5\u5177";
+  if (!ordered.length) return ["\u96F7\u8FBE\uFF1A\u5F53\u524D\u65E0\u4F18\u60E0\u7A97\u53E3", hint].join("\n");
+  const { w, s } = ordered[0];
+  const models = w.models.slice(0, 3).map((m) => `${m.model} ${m.effective ?? ""}`.trim()).join(" \xB7 ");
+  return [windowHeadline(w, s), models, hint].join("\n");
+}
+function dashboardHintLine() {
+  return boundPort ? `\u4EEA\u8868\u76D8: http://127.0.0.1:${boundPort}` : "";
+}
+async function sendBootToast(cfg, now = /* @__PURE__ */ new Date()) {
+  if (bootToastSent || !cfg.toast || !cfg.toastOnBoot) return false;
+  if (!client) return false;
+  let message, active;
+  try {
+    message = renderBootToast(now);
+    active = currentStatus().windows.some((w) => windowState(w, now).active);
+  } catch {
+    return false;
+  }
+  bootToastSent = true;
+  try {
+    await client.tui?.showToast?.({ body: { title: "Token Plan \u96F7\u8FBE", message, variant: active ? "success" : "info", duration: 1e4 } });
+  } catch {
+  }
+  return true;
+}
 async function handleTokenplanCommand(input, output) {
   if (input?.command !== "tokenplan") return;
   const parts = output?.parts;
@@ -1245,10 +1332,10 @@ async function handleTokenplanCommand(input, output) {
     return;
   }
   parts.length = 0;
-  parts.push({ type: "text", text, ignored: true });
+  parts.push({ type: "text", text: text + "\n\uFF08\u6458\u8981\u7531\u63D2\u4EF6\u5199\u5165\uFF0C\u6A21\u578B\u4E0D\u53EF\u89C1\uFF09", ignored: true });
   parts.push({
     type: "text",
-    text: `\u63D2\u4EF6\u5DF2\u628A Token Plan \u4F18\u60E0\u6458\u8981\u76F4\u63A5\u5199\u5165\u672C\u6761\u6D88\u606F\uFF08ignored \u90E8\u5206\u4E0D\u8FDB\u5165\u4F60\u7684\u4E0A\u4E0B\u6587\uFF09\u3002\u8BF7\u4EC5\u56DE\u590D\u4E00\u53E5\u300C\u2705 \u4F18\u60E0\u6458\u8981\u5DF2\u5C55\u793A\uFF08\u6570\u636E\u622A\u81F3 ${QODER_SNAPSHOT_DATE}\uFF09\u300D\uFF0C\u4E0D\u8981\u590D\u8FF0\u6458\u8981\u5185\u5BB9\u3001\u4E0D\u8981\u8C03\u7528\u4EFB\u4F55\u5DE5\u5177\u3002`,
+    text: "\u4EC5\u56DE\u590D\u4E00\u8BCD\uFF1A\u2705\uFF08\u4E0D\u8981\u590D\u8FF0\u4E0A\u6587\uFF0C\u4E0D\u8981\u8C03\u7528\u5DE5\u5177\uFF09",
     synthetic: true
   });
 }
@@ -1261,7 +1348,7 @@ function resolveConfig(options) {
     const extra = typeof options === "string" ? void 0 : options;
     if (extra && typeof extra === "object") {
       const merged = JSON.parse(JSON.stringify(cfg));
-      for (const k of ["webpanel", "sidebar", "toast", "refresh", "providerMatch"]) {
+      for (const k of ["webpanel", "sidebar", "toast", "refresh", "providerMatch", "slash", "toastOnBoot", "dashboard"]) {
         const v = extra[k];
         if (v === void 0) continue;
         if (k === "providerMatch") {
@@ -1287,7 +1374,9 @@ async function bootProcess(cfg) {
   });
   if (cfg.webpanel.enabled) {
     const panelUrl = await startPanel(cfg.webpanel.port);
-    console.log(`[alibabatokenplan] \u9762\u677F\u5DF2\u542F\u52A8: ${panelUrl || "\u542F\u52A8\u5931\u8D25\uFF08\u7AEF\u53E3\u8017\u5C3D\uFF09"}`);
+    console.log(`[alibabatokenplan] \u4EEA\u8868\u76D8\u5DF2\u542F\u52A8\uFF08\u4E3B\u754C\u9762\uFF09: ${panelUrl || "\u542F\u52A8\u5931\u8D25\uFF08\u7AEF\u53E3\u8017\u5C3D\uFF09"}`);
+    if (panelUrl && cfg.dashboard.autoOpen) void tryAutoOpen(panelUrl).catch(() => {
+    });
   }
   const catalogTimer = setInterval(() => {
     refreshCatalog(cfg).catch(() => {
@@ -1302,14 +1391,19 @@ async function bootProcess(cfg) {
     });
     publishStatus();
   }, 6e4);
-  for (const t of [catalogTimer, quotaTimer, tickTimer]) t.unref?.();
+  const bootToastTimer = setTimeout(() => {
+    void sendBootToast(cfg).catch(() => {
+    });
+  }, BOOT_TOAST_DELAY_MS);
+  for (const t of [catalogTimer, quotaTimer, tickTimer, bootToastTimer]) t.unref?.();
   return () => {
-    for (const t of [catalogTimer, quotaTimer, tickTimer]) clearInterval(t);
+    for (const t of [catalogTimer, quotaTimer, tickTimer, bootToastTimer]) clearInterval(t);
     try {
       server?.close();
     } catch {
     }
     server = null;
+    boundPort = 0;
   };
 }
 var plugin = async (input, options) => {
@@ -1343,6 +1437,7 @@ var plugin = async (input, options) => {
       shutdown();
     },
     config: async (config) => {
+      if (!cfg.slash) return;
       config.command = config.command ?? {};
       config.command.tokenplan = {
         description: "\u663E\u793A Token Plan \u4F18\u60E0/\u500D\u7387/\u5012\u8BA1\u65F6\uFF1A\u63D2\u4EF6\u786E\u5B9A\u6027\u76F4\u5199\u672C\u4F1A\u8BDD\u8F6C\u5F55\uFF08\u4E0D\u8017 token \u590D\u8FF0\uFF09\uFF1B\u53EF\u9009\u53C2\u6570=\u6A21\u578B\u540D\u8FC7\u6EE4",
@@ -1378,13 +1473,29 @@ var __testing = {
   },
   setBootOverride: (fn) => {
     bootOverride = fn;
-  }
+  },
+  // 0.1.3 仪表盘优先回归锚点：boot toast（D4）/ autoOpen 探测（D1）/ 面板 inSale 载荷（D2③）
+  renderBootToast,
+  sendBootToast,
+  resetBootToast: () => {
+    bootToastSent = false;
+    autoOpenTried = false;
+  },
+  tryAutoOpen,
+  findEdgePath,
+  setBoundPort: (p) => {
+    boundPort = p;
+  },
+  statusPayload
 };
 export {
   AliBabaTokenPlanPlugin,
   __testing,
   blSpawnPlan,
   index_default as default,
+  findEdgePath,
   handleTokenplanCommand,
-  renderDesktopSummary
+  renderBootToast,
+  renderDesktopSummary,
+  tryAutoOpen
 };
