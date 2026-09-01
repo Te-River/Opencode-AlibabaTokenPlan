@@ -8,7 +8,7 @@ import { windowState, fmtCountdown } from "./rules";
 import { fmtFactor } from "./text";
 import { isProviderMatchMode, type ProviderMatchMode } from "./provider";
 
-export const WRITTEN_BY = "@te-river/opencode-alibabatokenplan/server@0.1.1";
+export const WRITTEN_BY = "@te-river/opencode-alibabatokenplan/server@0.1.2";
 export const STALE_AFTER_SEC = 600;
 
 export interface CatalogInput {

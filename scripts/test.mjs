@@ -334,3 +334,50 @@ test("R2 TUI/桌面接线：sidebar/home 走 cfg.providerMatch；桌面命令不
   assert.match(srvSrc, /"command\.execute\.before": handleTokenplanCommand/); // R1 hook 已挂
   assert.match(srvSrc, /if \(input\?\.command !== "tokenplan"\) return;/); // 仅拦本命令
 });
+
+// ═════════════════ 0.1.2 F5 多实例回归（桌面版按 workspace/实例多次调用 plugin()） ═════════════════
+// 防再犯设计本身：0.1.1 守卫让第二次起的调用返回无 hooks 存根 → 这里同进程连调两次
+// plugin()，断言「每次都是完整 hooks + 副作用只 boot 一次 + 后启 dispose 不杀首启」。
+// 二启模拟=直接再 await plugin(...)：同一模块实例共享 globalThis.__atpServerStarted，
+// 与桌面活体一致；进程级副作用经 __testing.setBootOverride 注入计数替身（不真打网络/bl）。
+
+test("多实例：连续两次 plugin() 都返回完整 hooks，boot 仅一次，后启 dispose 不清首启", async () => {
+  const t = srv.__testing;
+  assert.equal(globalThis.__atpServerStarted, undefined, "本用例需全新进程（无先启污染）");
+  assert.equal(t.bootCount, 0);
+  let boots = 0, cleans = 0;
+  t.setBootOverride(async (cfg) => {
+    assert.equal(typeof cfg.toast, "boolean"); // 注入实现收到已解析配置（替代整组真实副作用）
+    boots++;
+    return () => { cleans++; };
+  });
+  try {
+    const inst1 = await srv.AliBabaTokenPlanPlugin({ client: { tag: "ws1" } });
+    const inst2 = await srv.AliBabaTokenPlanPlugin({ client: { tag: "ws2" } }, { toast: false });
+    // ① 修复前的病灶：inst2 = {event,dispose} 存根。现在两次返回值都必须含全 hooks
+    for (const [i, inst] of [[1, inst1], [2, inst2]]) {
+      assert.equal(typeof inst.config, "function", `实例${i}：config hook 必须存在`);
+      assert.equal(typeof inst["command.execute.before"], "function", `实例${i}：命令拦截 hook 必须存在`);
+      assert.ok(inst.tool?.tokenplan_discounts && inst.tool?.bailian_discounts, `实例${i}：两个工具名都必须在`);
+      assert.equal(typeof inst.tool.tokenplan_discounts.execute, "function");
+    }
+    // ② 二启实例的 config hook 真能注入命令（桌面 /command 缺 tokenplan 的直接复现断言）
+    const cfgObj2 = {};
+    await inst2.config(cfgObj2);
+    assert.ok(cfgObj2.command?.tokenplan, "后启实例必须照常注入 /tokenplan");
+    const cfgObj1 = {};
+    await inst1.config(cfgObj1);
+    assert.ok(cfgObj1.command?.tokenplan);
+    // ③ 副作用不翻倍（publishStatus/refreshCatalog/定时器整组只随首启跑一次）
+    assert.equal(boots, 1, "进程级副作用只应执行一次");
+    assert.equal(t.bootCount, 1);
+    // ④ 后启实例 dispose = no-op（不能让 ws2 unload 杀 ws1 的后台刷新）；首启 dispose 真清理
+    inst2.dispose();
+    assert.equal(cleans, 0, "后启实例 dispose 不得触发首启清理");
+    assert.equal(t.bootCount, 1); // boot 状态不变（无重跑、无误杀）
+    inst1.dispose();
+    assert.equal(cleans, 1, "首启实例 dispose 应执行真清理");
+  } finally {
+    t.setBootOverride(null);
+  }
+});

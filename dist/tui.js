@@ -421,7 +421,7 @@ function isProviderMatchMode(v) {
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-var WRITTEN_BY = "@te-river/opencode-alibabatokenplan/server@0.1.1";
+var WRITTEN_BY = "@te-river/opencode-alibabatokenplan/server@0.1.2";
 var STALE_AFTER_SEC = 600;
 var CATALOG_ORIGIN = {
   live: "bailian-live",

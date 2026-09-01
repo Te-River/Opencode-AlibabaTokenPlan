@@ -492,7 +492,7 @@ function isProviderMatchMode(v) {
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-var WRITTEN_BY = "@te-river/opencode-alibabatokenplan/server@0.1.1";
+var WRITTEN_BY = "@te-river/opencode-alibabatokenplan/server@0.1.2";
 var STALE_AFTER_SEC = 600;
 var CATALOG_ORIGIN = {
   live: "bailian-live",
@@ -1253,18 +1253,14 @@ async function handleTokenplanCommand(input, output) {
   });
 }
 var cfgNow = null;
-var plugin = async (input, options) => {
-  client = input?.client ?? null;
-  const g = globalThis;
-  if (g.__atpServerStarted) return { event: async () => {
-  }, dispose: () => {
-  } };
-  g.__atpServerStarted = true;
-  cfgNow = loadConfig();
+var bootCount = 0;
+var bootOverride = null;
+function resolveConfig(options) {
+  let cfg = loadConfig();
   try {
     const extra = typeof options === "string" ? void 0 : options;
     if (extra && typeof extra === "object") {
-      const merged = JSON.parse(JSON.stringify(cfgNow));
+      const merged = JSON.parse(JSON.stringify(cfg));
       for (const k of ["webpanel", "sidebar", "toast", "refresh", "providerMatch"]) {
         const v = extra[k];
         if (v === void 0) continue;
@@ -1273,12 +1269,13 @@ var plugin = async (input, options) => {
         } else if (typeof v !== "object" || v === null) merged[k] = v;
         else Object.assign(merged[k] ?? {}, v);
       }
-      cfgNow = merged;
+      cfg = merged;
     }
   } catch {
   }
-  const cfg = cfgNow ?? loadConfig();
-  cfgNow = cfg;
+  return cfg;
+}
+async function bootProcess(cfg) {
   const cached = loadCache();
   if (cached) {
     state.models = cached;
@@ -1288,9 +1285,8 @@ var plugin = async (input, options) => {
   refreshCatalog(cfg);
   refreshQuota().catch(() => {
   });
-  let panelUrl = "";
   if (cfg.webpanel.enabled) {
-    panelUrl = await startPanel(cfg.webpanel.port);
+    const panelUrl = await startPanel(cfg.webpanel.port);
     console.log(`[alibabatokenplan] \u9762\u677F\u5DF2\u542F\u52A8: ${panelUrl || "\u542F\u52A8\u5931\u8D25\uFF08\u7AEF\u53E3\u8017\u5C3D\uFF09"}`);
   }
   const catalogTimer = setInterval(() => {
@@ -1307,6 +1303,27 @@ var plugin = async (input, options) => {
     publishStatus();
   }, 6e4);
   for (const t of [catalogTimer, quotaTimer, tickTimer]) t.unref?.();
+  return () => {
+    for (const t of [catalogTimer, quotaTimer, tickTimer]) clearInterval(t);
+    try {
+      server?.close();
+    } catch {
+    }
+    server = null;
+  };
+}
+var plugin = async (input, options) => {
+  client = input?.client ?? null;
+  const cfg = cfgNow = resolveConfig(options);
+  let shutdown = () => {
+  };
+  const g = globalThis;
+  if (!g.__atpServerStarted) {
+    g.__atpServerStarted = true;
+    bootCount++;
+    const done = bootOverride ? await bootOverride(cfg) : await bootProcess(cfg);
+    if (typeof done === "function") shutdown = done;
+  }
   const toolHelper = await loadToolHelper();
   const S = toolHelper.schema;
   const toolDef = (descPrefix) => toolHelper({
@@ -1321,14 +1338,9 @@ var plugin = async (input, options) => {
   return {
     event: async () => {
     },
-    // m8：宿主卸载 → 关面板 server + 清全部定时器，不留端口/句柄/后台刷新泄漏
+    // F3：首启实例 → bootProcess 的真实清理（m8）；后启实例 → no-op
     dispose: () => {
-      for (const t of [catalogTimer, quotaTimer, tickTimer]) clearInterval(t);
-      try {
-        server?.close();
-      } catch {
-      }
-      server = null;
+      shutdown();
     },
     config: async (config) => {
       config.command = config.command ?? {};
@@ -1359,7 +1371,14 @@ var __testing = {
   },
   // R1/R2 回归锚点：命令拦截重写 + 紧凑摘要渲染
   handleTokenplanCommand,
-  renderDesktopSummary
+  renderDesktopSummary,
+  // 0.1.2 多实例回归锚点（F5）：boot 计数 + 可注入进程级副作用（仅测试环境替换）
+  get bootCount() {
+    return bootCount;
+  },
+  setBootOverride: (fn) => {
+    bootOverride = fn;
+  }
 };
 export {
   AliBabaTokenPlanPlugin,

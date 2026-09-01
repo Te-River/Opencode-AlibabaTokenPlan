@@ -2,6 +2,9 @@
 // 端口粘滞/toast/工具/面板），新增：Qoder 快照并入、status.json 原子写、
 // tokenplan_discounts 工具（旧名委托）、config hook 注入 tokenplan 命令、webpanel 默认关。
 //
+// 0.1.2：多实例宿主（桌面版按 workspace/实例多次调用 plugin()）下守卫只挡进程级
+// 副作用，hooks 每实例都完整返回；配置每实例解析；dispose 仅首启实例真清理。
+//
 // 模块形态（03-D1 / quota dist/index.js 实证）：default export { id, server }，
 // 避免宿主 getLegacyPlugins 兜底路径把命名导出当第二个插件重复装载。
 
@@ -468,18 +471,24 @@ export async function handleTokenplanCommand(input: any, output: any): Promise<v
 
 let cfgNow: AtpConfig | null = null;
 
-const plugin = async (input: any, options?: any) => {
-  client = input?.client ?? null;
-  const g = globalThis as any;
-  if (g.__atpServerStarted) return { event: async () => {}, dispose: () => {} };
-  g.__atpServerStarted = true;
+// 进程级 boot 次数（__testing.bootCount 观测；F5 回归锚点：多实例下副作用只跑一次）
+let bootCount = 0;
 
-  // 配置：文件优先，宿主若传 tuple options 则叠加（D5：传了就赢，没传不输）
-  cfgNow = loadConfig();
+// 测试注入点：替换进程级 boot 副作用（默认 null=真实启动）。回归用例以其计数
+// publishStatus/refreshCatalog/定时器等整组副作用，避免测试环境真打网络/起 bl 子进程；
+// 生产路径不经此分支。返回值若为函数 = 首启实例 dispose 时执行的清理器。
+type BootOverride = (cfg: AtpConfig) => void | (() => void) | Promise<void | (() => void)>;
+let bootOverride: BootOverride | null = null;
+
+/** 配置解析（F2：每次 plugin() 实例化都跑——各实例 hooks 闭包引用自己那份 cfg；
+ *  cfgNow 同步指向「最近解析」供 panel/toast 等进程级消费者）。
+ *  文件优先，宿主若传 tuple options 则叠加（D5：传了就赢，没传不输）。 */
+function resolveConfig(options?: any): AtpConfig {
+  let cfg = loadConfig();
   try {
     const extra = typeof options === "string" ? undefined : options;
     if (extra && typeof extra === "object") {
-      const merged = JSON.parse(JSON.stringify(cfgNow));
+      const merged = JSON.parse(JSON.stringify(cfg));
       for (const k of ["webpanel", "sidebar", "toast", "refresh", "providerMatch"]) {
         const v = (extra as any)[k];
         if (v === undefined) continue;
@@ -489,21 +498,23 @@ const plugin = async (input: any, options?: any) => {
         else if (typeof v !== "object" || v === null) (merged as any)[k] = v;
         else Object.assign((merged as any)[k] ?? {}, v);
       }
-      cfgNow = merged;
+      cfg = merged;
     }
   } catch {}
+  return cfg;
+}
 
-  const cfg: AtpConfig = cfgNow ?? loadConfig();
-  cfgNow = cfg;
+/** 进程级副作用（仅首启执行一次）：状态种子/落盘/后台刷新/面板/定时器。
+ *  F2：沿用首启解析的 cfg，不为后启实例重复起 timer。返回清理器（只挂首启 dispose，F3）。 */
+async function bootProcess(cfg: AtpConfig): Promise<() => void> {
   const cached = loadCache();
   if (cached) { state.models = cached; state.fetchedAt = BAILIAN_SNAPSHOT_AT + "（缓存）"; }
   publishStatus(); // 先落盘一份（TUI 冷启动即有数据）
   refreshCatalog(cfg);
   refreshQuota().catch(() => {});
 
-  let panelUrl = "";
   if (cfg.webpanel.enabled) {
-    panelUrl = await startPanel(cfg.webpanel.port);
+    const panelUrl = await startPanel(cfg.webpanel.port);
     console.log(`[alibabatokenplan] 面板已启动: ${panelUrl || "启动失败（端口耗尽）"}`);
   }
 
@@ -511,6 +522,37 @@ const plugin = async (input: any, options?: any) => {
   const quotaTimer = setInterval(() => { refreshQuota().catch(() => {}); }, cfg.refresh.quotaMin * 60_000);
   const tickTimer = setInterval(() => { if (cfg.toast) maybeToast().catch(() => {}); publishStatus(); }, 60_000);
   for (const t of [catalogTimer, quotaTimer, tickTimer]) t.unref?.();
+
+  // m8：宿主卸载 → 关面板 server + 清全部定时器，不留端口/句柄/后台刷新泄漏
+  return () => {
+    for (const t of [catalogTimer, quotaTimer, tickTimer]) clearInterval(t);
+    try { server?.close(); } catch {}
+    server = null;
+  };
+}
+
+const plugin = async (input: any, options?: any) => {
+  // F4：client 每次调用粘滞更新为最新——toast 目标跟随最近活跃实例
+  // （桌面多 workspace 共享一个 server 进程，弹窗应出现在用户正在用的窗口）
+  client = input?.client ?? null;
+
+  // F2：每实例配置——解析不看守卫，后启实例的 hooks 用本次解析的 cfg
+  const cfg: AtpConfig = (cfgNow = resolveConfig(options));
+
+  // F1：双实例守卫降级——__atpServerStarted 只保护进程级副作用；
+  // 所有 plugin() 调用都必须返回完整 hooks。旧实现在此直接 return 无 hooks 存根，
+  // 桌面版按 workspace/实例多次调用 plugin() 时，后启实例的 config/command/
+  // tool 全被吞掉（生产事故：/config 有我们但 /command 无 tokenplan）。
+  // F3：仅首启实例的 dispose 真清 timer/关 server——后启实例 unload 不得
+  // 杀掉首启实例的后台刷新（A 工作区关闭不能影响 B）。
+  let shutdown: () => void = () => {};
+  const g = globalThis as any;
+  if (!g.__atpServerStarted) {
+    g.__atpServerStarted = true;
+    bootCount++;
+    const done = bootOverride ? await bootOverride(cfg) : await bootProcess(cfg);
+    if (typeof done === "function") shutdown = done;
+  }
 
   const toolHelper = await loadToolHelper();
   const S: any = toolHelper.schema;
@@ -529,12 +571,8 @@ const plugin = async (input: any, options?: any) => {
 
   return {
     event: async () => {},
-    // m8：宿主卸载 → 关面板 server + 清全部定时器，不留端口/句柄/后台刷新泄漏
-    dispose: () => {
-      for (const t of [catalogTimer, quotaTimer, tickTimer]) clearInterval(t);
-      try { server?.close(); } catch {}
-      server = null;
-    },
+    // F3：首启实例 → bootProcess 的真实清理（m8）；后启实例 → no-op
+    dispose: () => { shutdown(); },
     config: async (config: any) => {
       // R1 主路径由 command.execute.before 确定性重写；此 template 是 fail-open 兜底
       // （宿主 hook 异常/无 client 时才走 LLM，接受 token 成本并注明）
@@ -570,4 +608,7 @@ export const __testing = {
   // R1/R2 回归锚点：命令拦截重写 + 紧凑摘要渲染
   handleTokenplanCommand,
   renderDesktopSummary,
+  // 0.1.2 多实例回归锚点（F5）：boot 计数 + 可注入进程级副作用（仅测试环境替换）
+  get bootCount() { return bootCount; },
+  setBootOverride: (fn: BootOverride | null) => { bootOverride = fn; },
 };

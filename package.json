@@ -1,6 +1,6 @@
 {
   "name": "@te-river/opencode-alibabatokenplan",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Opencode server+TUI plugin: Aliyun Bailian Token Plan discount radar (live gateway / bl CLI / snapshot + Qoder static snapshot) persisted to status.json, shown in sidebar/home with countdown, tools and toasts.",
   "type": "module",
   "main": "./dist/server.js",

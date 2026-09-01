@@ -76,6 +76,10 @@ npm run publish:check
 
 ## Changelog
 
+### 0.1.2
+
+- **修复：多实例宿主（桌面版）下插件命令/工具丢失（守卫只挡副作用，hooks 每实例返回）**——桌面版同一 server 进程会按 workspace/实例多次调用 `plugin()`，0.1.1 的双实例守卫让第二次之后的调用拿到无 hooks 存根，`/tokenplan` 命令与查询工具在后启实例里静默消失。现在守卫只保护进程级副作用（状态落盘/后台刷新/定时器/面板，仅首启执行、dispose 也仅首启实例真清理），配置解析与完整 hooks（config / command.execute.before / tool / dispose）每次实例化都返回。
+
 ### 0.1.1
 
 - **桌面端确定性命令**：`/tokenplan` 经 server 侧 `command.execute.before` 拦截，优惠摘要（窗口状态+倒计时、在卖倍率、限时优惠、来源与截至声明、时区）由插件直接写入当前会话转录（`ignored` 部分对用户可见、不进模型上下文），模型仅回一句确认——Opencode 桌面版（Electron，不渲染 TUI 插件层）从此可见；支持可选模型名过滤（`/tokenplan qwen3.8-max`）。hook 失败时回退旧「经 LLM 调工具」模板，不炸命令。
