@@ -2152,6 +2152,9 @@ function quotaSeverity(usedPercent) {
   return "success";
 }
 var NAMED_SEVERITY_FG = { success: "green", warning: "yellow", error: "red" };
+function colorString(value, fallback) {
+  return typeof value === "string" && value.trim() ? value : fallback;
+}
 function parseRgb(color) {
   const value = color.trim();
   const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(value);
@@ -2174,14 +2177,17 @@ function isWashedOut(color) {
 }
 function quotaSeverityFg(theme, severity) {
   const feedback = theme.text.feedback;
-  const fg = severity === "error" ? feedback?.error?.base : severity === "warning" ? feedback?.warning?.base : severity === "success" ? feedback?.success?.base : void 0;
-  if (fg && fg !== theme.text.base && !isWashedOut(fg)) return fg;
-  return severity ? NAMED_SEVERITY_FG[severity] : theme.text.base;
+  const base = colorString(theme.text.base, "white");
+  const raw = severity === "error" ? feedback?.error?.base : severity === "warning" ? feedback?.warning?.base : severity === "success" ? feedback?.success?.base : void 0;
+  const fg = colorString(raw, "");
+  if (fg && fg !== base && !isWashedOut(fg)) return fg;
+  return severity ? NAMED_SEVERITY_FG[severity] : base;
 }
 function overlayFg(theme, period) {
   const feedback = theme.text.feedback;
-  const preferred = period === "fiveHour" ? feedback?.info?.base : feedback?.warning?.base;
-  if (preferred && preferred !== theme.text.base) return preferred;
+  const base = colorString(theme.text.base, "white");
+  const preferred = colorString(period === "fiveHour" ? feedback?.info?.base : feedback?.warning?.base, "");
+  if (preferred && preferred !== base) return preferred;
   return period === "fiveHour" ? "cyan" : "yellow";
 }
 var METER = /^(.*?)([█░]{16} \d+(?:\.\d+)?%)(.*)$/;
@@ -2410,7 +2416,7 @@ var spanFg = (fg) => ({
   fg
 });
 function QuotaLine(props) {
-  const base = props.theme.text.base;
+  const base = colorString(props.theme.text.base, "white");
   const parts = splitMeter(props.line);
   if (!parts) {
     return (() => {
@@ -2440,8 +2446,8 @@ function QuotaLine(props) {
 }
 var VALUE_LINE = /^([█▓░]{16}) (?=.*)/;
 function PeriodLine(props) {
-  const base = props.theme.text.base;
-  const muted = props.theme.text.muted;
+  const base = colorString(props.theme.text.base, "white");
+  const muted = colorString(props.theme.text.muted, "gray");
   const parts = VALUE_LINE.exec(props.line);
   if (!parts) {
     return (() => {
@@ -2518,7 +2524,7 @@ function SidebarLine(props) {
       }
     });
   }
-  const fg = props.line.startsWith(MONTH_LABEL) ? props.theme.text.base : props.theme.text.muted;
+  const fg = props.line.startsWith(MONTH_LABEL) ? colorString(props.theme.text.base, "white") : colorString(props.theme.text.muted, "gray");
   return (() => {
     var _el$10 = _$createElement("text");
     _$setProp(_el$10, "fg", fg);
@@ -2573,7 +2579,7 @@ function FooterView(props) {
       var _el$12 = _$createElement("text");
       _$setProp(_el$12, "wrapMode", "none");
       _$insert(_el$12, line);
-      _$effect((_$p) => _$setProp(_el$12, "fg", props.context.theme.text.muted, _$p));
+      _$effect((_$p) => _$setProp(_el$12, "fg", colorString(props.context.theme.text.muted, "gray"), _$p));
       return _el$12;
     }
   });
@@ -2815,15 +2821,18 @@ function LoginFlow(props) {
 
 // src/tui/panel.tsx
 function RowLine(props) {
+  const mutedFg = colorString(props.mutedFg, "gray");
+  const baseFg = colorString(props.baseFg, "white");
+  const valueFg = colorString(props.valueFg, baseFg);
   return (() => {
     var _el$ = _$createElement3("text"), _el$2 = _$createElement3("span");
     _$insertNode3(_el$, _el$2);
     _$setProp3(_el$, "wrapMode", "none");
     _$setProp3(_el$, "truncate", true);
-    _$spread2(_el$2, _$mergeProps2(() => spanFg(props.mutedFg)), true);
+    _$spread2(_el$2, _$mergeProps2(() => spanFg(mutedFg)), true);
     _$insert3(_el$2, () => rowLabelText(props.row.label));
     _$insert3(_el$, () => props.row.value, null);
-    _$effect3((_$p) => _$setProp3(_el$, "fg", props.row.muted ? props.mutedFg : props.valueFg ?? props.baseFg, _$p));
+    _$effect3((_$p) => _$setProp3(_el$, "fg", props.row.muted ? mutedFg : valueFg, _$p));
     return _el$;
   })();
 }
@@ -2953,7 +2962,7 @@ function TokenPlanPanel(props) {
     _$setProp3(_el$3, "flexDirection", "column");
     _$setProp3(_el$3, "paddingLeft", 2);
     _$setProp3(_el$3, "paddingRight", 2);
-    _$insert3(_el$4, () => mode() === "login" ? "Token Plan \u6388\u6743" : `Token Plan \u989D\u5EA6\u4E0E\u4F18\u60E0 \xB7 v${"0.2.16"}`);
+    _$insert3(_el$4, () => mode() === "login" ? "Token Plan \u6388\u6743" : `Token Plan \u989D\u5EA6\u4E0E\u4F18\u60E0 \xB7 v${"0.2.17"}`);
     _$insert3(_el$3, _$createComponent3(Show3, {
       get when() {
         return notice();
@@ -2961,7 +2970,7 @@ function TokenPlanPanel(props) {
       children: (current) => (() => {
         var _el$6 = _$createElement3("text");
         _$insert3(_el$6, () => loginSuccessNotice(current().storage));
-        _$effect3((_$p) => _$setProp3(_el$6, "fg", current().storage === "session" ? theme().text.feedback.warning.base : theme().text.base, _$p));
+        _$effect3((_$p) => _$setProp3(_el$6, "fg", current().storage === "session" ? colorString(theme().text.feedback?.warning?.base, "yellow") : colorString(theme().text.base, "white"), _$p));
         return _el$6;
       })()
     }), _el$5);
@@ -2973,7 +2982,7 @@ function TokenPlanPanel(props) {
         var _el$7 = _$createElement3("text"), _el$8 = _$createTextNode2(`\u26A0 `);
         _$insertNode3(_el$7, _el$8);
         _$insert3(_el$7, message, null);
-        _$effect3((_$p) => _$setProp3(_el$7, "fg", theme().text.muted, _$p));
+        _$effect3((_$p) => _$setProp3(_el$7, "fg", colorString(theme().text.muted, "gray"), _$p));
         return _el$7;
       })()
     }), _el$5);
@@ -3023,7 +3032,7 @@ function TokenPlanPanel(props) {
             })
           }), null);
           _$effect3((_p$) => {
-            var _v$4 = maxHeight(), _v$5 = TextAttributes.BOLD, _v$6 = theme().text.action.primary.selected, _v$7 = TextAttributes.BOLD, _v$8 = theme().text.action.primary.selected;
+            var _v$4 = maxHeight(), _v$5 = TextAttributes.BOLD, _v$6 = colorString(theme().text.action?.primary?.selected, "white"), _v$7 = TextAttributes.BOLD, _v$8 = colorString(theme().text.action?.primary?.selected, "white");
             _v$4 !== _p$.e && (_p$.e = _$setProp3(_el$9, "maxHeight", _v$4, _p$.e));
             _v$5 !== _p$.t && (_p$.t = _$setProp3(_el$1, "attributes", _v$5, _p$.t));
             _v$6 !== _p$.a && (_p$.a = _$setProp3(_el$1, "fg", _v$6, _p$.a));
@@ -3061,7 +3070,7 @@ function TokenPlanPanel(props) {
       return () => _c$() ? "Esc \u53D6\u6D88\uFF08\u4F1A\u5173\u95ED\u672C\u6B21\u542F\u52A8\u7684\u6D4F\u89C8\u5668\uFF09" : `${props.view.refreshing() ? "\u5237\u65B0\u4E2D\u2026 \xB7 " : ""}a \u6388\u6743/\u91CD\u65B0\u6388\u6743 \xB7 d \u9000\u51FA\u767B\u5F55 \xB7 \u2191\u2193 \u6EDA\u52A8 \xB7 Esc \u5173\u95ED`;
     })());
     _$effect3((_p$) => {
-      var _v$ = TextAttributes.BOLD, _v$2 = theme().text.base, _v$3 = theme().text.muted;
+      var _v$ = TextAttributes.BOLD, _v$2 = colorString(theme().text.base, "white"), _v$3 = colorString(theme().text.muted, "gray");
       _v$ !== _p$.e && (_p$.e = _$setProp3(_el$4, "attributes", _v$, _p$.e));
       _v$2 !== _p$.t && (_p$.t = _$setProp3(_el$4, "fg", _v$2, _p$.t));
       _v$3 !== _p$.a && (_p$.a = _$setProp3(_el$5, "fg", _v$3, _p$.a));

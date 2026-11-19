@@ -7,7 +7,7 @@ import { useTerminalDimensions } from "@opentui/solid";
 import type { TuiContext } from "./context";
 import type { TokenPlanView } from "./state";
 import { createClock } from "./state";
-import { discountRows, quotaRows, quotaSeverityFg, rowLabelText, type Row } from "./format";
+import { colorString, discountRows, quotaRows, quotaSeverityFg, rowLabelText, type Row } from "./format";
 import { spanFg } from "./views";
 import { LoginFlow, loginSuccessNotice, type LoginStorage } from "./login";
 import { forgetCredential, submitManualCookie } from "../core/quota/credentials";
@@ -16,10 +16,14 @@ import { forgetCredential, submitManualCookie } from "../core/quota/credentials"
 declare const __ATP_VERSION__: string;
 
 function RowLine(props: { row: Row; mutedFg: string; baseFg: string; valueFg?: string }) {
+  // 主题色可能是 RGBA 对象：所有 fg 统一归一化成字符串，避免渲染器 .trim() 崩溃。
+  const mutedFg = colorString(props.mutedFg, "gray");
+  const baseFg = colorString(props.baseFg, "white");
+  const valueFg = colorString(props.valueFg, baseFg);
   // truncate：wrapMode="none" 的长行（优惠窗口那行有 4 段）按行宽尾部裁掉，不越出面板边界。
   return (
-    <text wrapMode="none" truncate fg={props.row.muted ? props.mutedFg : props.valueFg ?? props.baseFg}>
-      <span {...spanFg(props.mutedFg)}>{rowLabelText(props.row.label)}</span>
+    <text wrapMode="none" truncate fg={props.row.muted ? mutedFg : valueFg}>
+      <span {...spanFg(mutedFg)}>{rowLabelText(props.row.label)}</span>
       {props.row.value}
     </text>
   );
@@ -125,7 +129,7 @@ export function TokenPlanPanel(props: {
 
   return (
     <box flexDirection="column" paddingLeft={2} paddingRight={2}>
-      <text attributes={TextAttributes.BOLD} fg={theme().text.base}>
+      <text attributes={TextAttributes.BOLD} fg={colorString(theme().text.base, "white")}>
         {mode() === "login" ? "Token Plan 授权" : `Token Plan 额度与优惠 · v${__ATP_VERSION__}`}
       </text>
 
@@ -133,7 +137,9 @@ export function TokenPlanPanel(props: {
         {(current) => (
           <text
             fg={
-              current().storage === "session" ? theme().text.feedback.warning.base : theme().text.base
+              current().storage === "session"
+                ? colorString(theme().text.feedback?.warning?.base, "yellow")
+                : colorString(theme().text.base, "white")
             }
           >
             {loginSuccessNotice(current().storage)}
@@ -142,7 +148,7 @@ export function TokenPlanPanel(props: {
       </Show>
 
       <Show when={props.view.lastError()}>
-        {(message) => <text fg={theme().text.muted}>⚠ {message()}</text>}
+        {(message) => <text fg={colorString(theme().text.muted, "gray")}>⚠ {message()}</text>}
       </Show>
 
       <Show
@@ -150,7 +156,7 @@ export function TokenPlanPanel(props: {
         fallback={
           <scrollbox ref={(element) => (scroll = element)} maxHeight={maxHeight()}>
             <box flexDirection="column">
-              <text attributes={TextAttributes.BOLD} fg={theme().text.action.primary.selected}>额度</text>
+              <text attributes={TextAttributes.BOLD} fg={colorString(theme().text.action?.primary?.selected, "white")}>额度</text>
               <For each={quotaSection()}>
                 {(row) => (
                   <RowLine
@@ -162,7 +168,7 @@ export function TokenPlanPanel(props: {
                 )}
               </For>
 
-              <text attributes={TextAttributes.BOLD} fg={theme().text.action.primary.selected}>优惠窗口</text>
+              <text attributes={TextAttributes.BOLD} fg={colorString(theme().text.action?.primary?.selected, "white")}>优惠窗口</text>
               <For each={discountSection()}>
                 {(row) => <RowLine row={row} mutedFg={theme().text.muted} baseFg={theme().text.base} />}
               </For>
@@ -181,7 +187,7 @@ export function TokenPlanPanel(props: {
         />
       </Show>
 
-      <text fg={theme().text.muted}>
+      <text fg={colorString(theme().text.muted, "gray")}>
         {mode() === "login"
           ? "Esc 取消（会关闭本次启动的浏览器）"
           : `${props.view.refreshing() ? "刷新中… · " : ""}a 授权/重新授权 · d 退出登录 · ↑↓ 滚动 · Esc 关闭`}

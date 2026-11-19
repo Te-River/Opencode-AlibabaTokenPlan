@@ -85,7 +85,7 @@ const formatBundle = await build({
   write: false,
   logLevel: "silent",
 });
-const { barSegments, discountRows, footerLine, isQuotaMeterLine, overlayFg, percent, quotaRows, quotaSeverityFg, remainingOf, rowLabelText, segmentedBar, segmentedUsageBar, sidebarLines, splitMeter, tokenTotal, usageBar } = await import(
+const { barSegments, colorString, discountRows, footerLine, isQuotaMeterLine, overlayFg, percent, quotaRows, quotaSeverityFg, remainingOf, rowLabelText, segmentedBar, segmentedUsageBar, sidebarLines, splitMeter, tokenTotal, usageBar } = await import(
   `data:text/javascript;base64,${Buffer.from(formatBundle.outputFiles[0].text).toString("base64")}`,
 );
 
@@ -890,6 +890,27 @@ test("rowLabelText：label 定宽 12 + 一个空格，超长 label 与 value 之
   assert.ok((rowLabelText(longLabel) + value).includes(`${longLabel} ${value}`));
   // 短 label 仍按 12 列对齐并留一个空格
   assert.equal(rowLabelText("月用量") + "x", `${"月用量".padEnd(12)} x`);
+});
+
+test("colorString：非字符串/空白色值一律回退，绝不把对象传给 fg（线上崩溃回归）", () => {
+  assert.equal(colorString({}, "white"), "white");
+  assert.equal(colorString(42, "gray"), "gray");
+  assert.equal(colorString("   ", "gray"), "gray");
+  assert.equal(colorString(null, "yellow"), "yellow");
+  assert.equal(colorString("#e5c07b", "white"), "#e5c07b");
+  // 主题整块是对象（RGBA）时：两个取色函数只返回字符串
+  const broken = { text: { base: {}, muted: {}, feedback: { warning: { base: {} }, info: { base: {} } } } };
+  for (const fg of [quotaSeverityFg(broken, "warning"), quotaSeverityFg(broken, null), overlayFg(broken, "week"), overlayFg(broken, "fiveHour")]) {
+    assert.equal(typeof fg, "string");
+  }
+  assert.equal(quotaSeverityFg(broken, "warning"), "yellow");
+  assert.equal(quotaSeverityFg(broken, null), "white");
+  assert.equal(overlayFg(broken, "week"), "yellow");
+  assert.equal(overlayFg(broken, "fiveHour"), "cyan");
+  // 正常字符串原样
+  const ok = { text: { base: "#ffffff", feedback: { warning: { base: "#e5c07b" } } } };
+  assert.equal(quotaSeverityFg(ok, "warning"), "#e5c07b");
+  assert.equal(colorString(ok.text.base, "white"), "#ffffff");
 });
 
 test("overlayFg：7 天叠加段黄、5h 叠加段青，两者不同色（主题缺 info 时用命名色）", () => {

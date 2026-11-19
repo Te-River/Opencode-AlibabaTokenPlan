@@ -6,6 +6,7 @@ import type { TuiContext } from "./context";
 import { createClock, type TokenPlanView } from "./state";
 import {
   barSegments,
+  colorString,
   footerLine,
   isQuotaMeterLine,
   MONTH_LABEL,
@@ -26,7 +27,7 @@ type Theme = TuiContext["theme"];
 export const spanFg = (fg: string): Record<string, string> => ({ fg });
 
 function QuotaLine(props: { theme: Theme; line: string; usedPercent: number | null | undefined }) {
-  const base = props.theme.text.base;
+  const base = colorString(props.theme.text.base, "white");
   const parts = splitMeter(props.line);
   if (!parts) {
     return (
@@ -50,8 +51,8 @@ const VALUE_LINE = /^([█▓░]{16}) (?=.*)/;
 
 /** 周期值行：叠加条逐段上色 —— █ 亮（正文色）、░ 灰、▓ 该行强调色（7d 黄 / 5h 青）。 */
 function PeriodLine(props: { theme: Theme; line: string; overlay: "week" | "fiveHour" }) {
-  const base = props.theme.text.base;
-  const muted = props.theme.text.muted;
+  const base = colorString(props.theme.text.base, "white");
+  const muted = colorString(props.theme.text.muted, "gray");
   const parts = VALUE_LINE.exec(props.line);
   if (!parts) {
     return (
@@ -96,7 +97,9 @@ function SidebarLine(props: {
   if (VALUE_LINE.test(props.line)) {
     return <PeriodLine theme={props.theme} line={props.line} overlay={props.overlay} />;
   }
-  const fg = props.line.startsWith(MONTH_LABEL) ? props.theme.text.base : props.theme.text.muted;
+  const fg = props.line.startsWith(MONTH_LABEL)
+    ? colorString(props.theme.text.base, "white")
+    : colorString(props.theme.text.muted, "gray");
   return (
     <text fg={fg} wrapMode="none">
       {props.line.length > 0 ? props.line : " "}
@@ -138,7 +141,7 @@ export function FooterView(props: { context: TuiContext; view: TokenPlanView }) 
 
   return (
     <Show when={line().length > 0}>
-      <text fg={props.context.theme.text.muted} wrapMode="none">
+      <text fg={colorString(props.context.theme.text.muted, "gray")} wrapMode="none">
         {line()}
       </text>
     </Show>

@@ -46,6 +46,14 @@ export function quotaSeverity(usedPercent: number | null | undefined): QuotaSeve
 /** 语义色 → 终端命名色：主题 feedback 解析成白色/不可用（与正文色相同）时用它兜底，不硬编码 hex。 */
 const NAMED_SEVERITY_FG: Record<QuotaSeverity, string> = { success: "green", warning: "yellow", error: "red" };
 
+/**
+ * 颜色归一化：主题解析值可能不是字符串（如 RGBA 对象），直接塞给 `fg` 会让渲染器
+ * 对它调 `.trim()` 崩溃。非字符串 / 空串一律回退到调用方给的命名色。
+ */
+export function colorString(value: unknown, fallback: string): string {
+  return typeof value === "string" && value.trim() ? value : fallback;
+}
+
 /** 解析 `#rgb` / `#rrggbb` / `rgb()/rgba()`；命名色、变量等其它格式 → null（直接采用）。 */
 function parseRgb(color: string): [number, number, number] | null {
   const value = color.trim();
@@ -73,10 +81,11 @@ function isWashedOut(color: string): boolean {
   return max > 200 && max - min < 40;
 }
 
-/** 语义等级的取色：主题 feedback 优先；缺失、等于正文色或近白/近灰时 → 命名色。 */
+/** 语义等级的取色：主题 feedback 优先；缺失、非字符串、等于正文色或近白/近灰时 → 命名色。 */
 export function quotaSeverityFg(theme: Theme, severity: QuotaSeverity | null | undefined): string {
   const feedback = theme.text.feedback;
-  const fg =
+  const base = colorString(theme.text.base, "white");
+  const raw =
     severity === "error"
       ? feedback?.error?.base
       : severity === "warning"
@@ -84,18 +93,20 @@ export function quotaSeverityFg(theme: Theme, severity: QuotaSeverity | null | u
         : severity === "success"
           ? feedback?.success?.base
           : undefined;
-  if (fg && fg !== theme.text.base && !isWashedOut(fg)) return fg;
-  return severity ? NAMED_SEVERITY_FG[severity] : theme.text.base;
+  const fg = colorString(raw, "");
+  if (fg && fg !== base && !isWashedOut(fg)) return fg;
+  return severity ? NAMED_SEVERITY_FG[severity] : base;
 }
 
 /**
  * 周期叠加段（▓）的强调色：近7天=黄、近5h=青，两条不能同色。
- * 主题 feedback 优先（warning / info），缺失或等于正文色时退回命名色。
+ * 主题 feedback 优先（warning / info），缺失/非字符串/等于正文色时退回命名色。
  */
 export function overlayFg(theme: Theme, period: "week" | "fiveHour"): string {
   const feedback = theme.text.feedback;
-  const preferred = period === "fiveHour" ? feedback?.info?.base : feedback?.warning?.base;
-  if (preferred && preferred !== theme.text.base) return preferred;
+  const base = colorString(theme.text.base, "white");
+  const preferred = colorString(period === "fiveHour" ? feedback?.info?.base : feedback?.warning?.base, "");
+  if (preferred && preferred !== base) return preferred;
   return period === "fiveHour" ? "cyan" : "yellow";
 }
 
