@@ -93,9 +93,11 @@ export function fmtHMS(msRemaining: number): string {
   return `${p(h)}:${p(m)}:${p(s)}`;
 }
 
-/** 倒计时短横串，如 "5h23m"（home_bottom 一行摘要用）。 */
+/** 倒计时短横串，如 "47s" / "5h23m"（home_bottom 一行摘要用）。 */
 export function fmtShortDur(msRemaining: number): string {
-  const total = Math.max(0, Math.floor(msRemaining / 60_000));
+  if (msRemaining <= 0) return "0s";
+  if (msRemaining < 60_000) return `${Math.ceil(msRemaining / 1000)}s`;
+  const total = Math.floor(msRemaining / 60_000);
   const d = Math.floor(total / DAY_MIN);
   const h = Math.floor((total % DAY_MIN) / 60);
   const m = total % 60;

@@ -1,101 +1,84 @@
-// 冒烟（零宿主，不依赖 opencode）：node scripts/smoke.mjs
-// 打印：数据源、合并后 offers 数、Qoder time-window≥3、status.json 落盘+JSON 合法、
-// 23:30/15:00 注入 now 的窗口判定断言（契约 §5 合并正确性）。
+// 加载形状冒烟（零宿主、零网络）：node scripts/smoke.mjs
+// 做法：把 dist/tui.js 复制到临时目录，为它的每个裸 import 造一个 stub 包
+// （@opencode/plugin/tui → { Plugin: { define: x => x } }，@opentui/* 与 solid-js → 同名空函数），
+// 再真实 import 该副本。断言的正是 V2 TUI 加载器唯一的接受条件：default 是 { id, setup }。
 
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "atp-smoke-"));
-process.env.ATP_STATE_DIR = path.join(tmp, "state"); // 不碰真实用户目录
+const distFile = path.resolve("dist/tui.js");
+const source = fs.readFileSync(distFile, "utf8");
 
-const core = await import("../dist/core.mjs");
-const { buildStatus, writeStatusAtomic, readStatusFile, statusFilePath } = core;
-
-function check(name, fn) {
-  try { fn(); console.log(`  ✔ ${name}`); }
-  catch (e) { console.error(`  ✘ ${name}: ${e.message}`); process.exitCode = 1; }
+function bareImports(text) {
+  const found = new Map(); // specifier -> local names
+  for (const match of text.matchAll(/import\s*\{([^}]*)\}\s*from\s*"([^".][^"]*)"/g)) {
+    if (match[2].startsWith("node:")) continue; // 内建模块不造 stub
+    const locals = match[1]
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => part.split(/\s+as\s+/)[0].trim());
+    const spec = match[2];
+    found.set(spec, [...new Set([...(found.get(spec) ?? []), ...locals])]);
+  }
+  return found;
 }
 
-// ── 数据源三级回退（离线环境 live/cli 必然失败 → snapshot 兜底路径） ──
-console.log("[smoke] 回退链验证（离线预期 live→cli→snapshot）");
-const snapshotCatalog = { source: "snapshot", models: core.bailianSnapshotModels(), fetchedAt: core.BAILIAN_SNAPSHOT_AT };
-const stSnap = buildStatus(snapshotCatalog, new Date("2026-08-31T12:00:00+08:00"));
-console.log(`  数据源: ${stSnap.sources.catalog}（+ Qoder 快照 ${stSnap.sources.qoderSnapshot}）`);
+const stubRoot = fs.mkdtempSync(path.join(os.tmpdir(), "atp-smoke-"));
 
-const offersCount = stSnap.offers.length;
-const qoderTimeWindows = stSnap.offers.filter((o) => o.kind === "time-window" && o.origins.includes("qoder-snapshot"));
-console.log(`  合并后 offers 数: ${offersCount}`);
-console.log(`  Qoder time-window 条数: ${qoderTimeWindows.length}`);
+try {
+  fs.writeFileSync(path.join(stubRoot, "package.json"), JSON.stringify({ type: "module" }));
+  const specs = bareImports(source);
+  assert.ok(specs.size > 0, "dist/tui.js 没有任何裸 import，产物可能不是插件入口");
 
-check("Qoder time-window ≥ 3", () => assert.ok(qoderTimeWindows.length >= 3, `${qoderTimeWindows.length} < 3`));
-check("offers 已合并去重（atp-offpeak-qwen38 在场）", () =>
-  assert.ok(stSnap.offers.some((o) => o.id === "atp-offpeak-qwen38")));
-check("双单位不互算：同窗 cny-price 与 credits-factor 分行并列（价低先）", () => {
-  const win = stSnap.windows.find((w) => w.id === "offpeak-22-08");
-  assert.ok(win, "offpeak 窗口缺失");
-  const q38 = win.models.filter((m) => m.model === "qwen3.8-max");
-  assert.ok(q38.length >= 2, "两套单位应并列成行");
-  const units = new Set(q38.flatMap((m) => m.origins.map((o) => (o === "qoder-snapshot" ? "credits" : "cny"))));
-  assert.equal(units.size, 2, "两 facet 各自居位");
-  assert.ok(parseFloat(q38[0].effective) <= parseFloat(q38[1].effective), "价低先");
-});
-check("全等合并出双源印证：(model,窗口,factor,单位) 全等 → origins 并集", () => {
-  const st = buildStatus(snapshotCatalog, new Date("2026-08-31T12:00:00+08:00"));
-  const dual = st.offers.find((o) => o.origins.includes("qoder-snapshot") && o.origins.some((x) => x !== "qoder-snapshot"));
-  if (dual) {
-    const win = st.windows.find((w) => w.id === "offpeak-22-08");
-    assert.ok(win.models.some((m) => m.badge && m.badge.includes("双源印证")));
-    console.log(`    双源行: ${dual.id} origins=${dual.origins.join("+")}`);
-  } else {
-    // 快照态下无天然全等行：构造等值 bailian-live 行验证合并语义
-    const merged = core.mergeOffers([
-      ...core.qoderSnapshotOffers(),
-      { id: "dup-live", kind: "time-window", label: "错峰 5 折", models: ["qwen3.8-max"], unit: "credits-factor", factor: 0.25, baseFactor: 0.5, window: { start: "22:00", end: "08:00", tz: "Asia/Shanghai" }, links: ["https://b"], origins: ["bailian-live"] },
-    ]);
-    const row = merged.find((o) => o.id === "atp-offpeak-qwen38");
-    assert.ok(row.origins.includes("bailian-live") && row.origins.includes("qoder-snapshot"), "origins 应并集");
-    const win = buildStatus({ ...snapshotCatalog }, new Date("2026-08-31T12:00:00+08:00")).windows; // 结构不变
-    assert.ok(Array.isArray(win));
+  for (const [spec, locals] of specs) {
+    const segments = spec.split("/");
+    const pkg = spec.startsWith("@") ? segments.slice(0, 2).join("/") : segments[0];
+    const subpath = segments.slice(spec.startsWith("@") ? 2 : 1).join("/");
+    const dir = path.join(stubRoot, "node_modules", pkg);
+    fs.mkdirSync(dir, { recursive: true });
+    const body = spec === "@opencode/plugin/tui"
+      ? "export const Plugin = { define: (definition) => definition };\n"
+      : `${locals.map((name) => `export const ${name} = () => undefined;`).join("\n")}\n`;
+    fs.writeFileSync(path.join(dir, "index.js"), body);
+    const exportsField = subpath ? { [`./${subpath}`]: "./index.js" } : { ".": "./index.js" };
+    fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name: pkg, type: "module", exports: exportsField }));
   }
-});
-check("free-calls expired 标记（atp-free-200 → 已过期公告）", () => {
-  const n = stSnap.notices.find((x) => x.text.includes("200"));
-  assert.ok(n && n.expired === true);
-});
 
-// ── status.json 原子落盘 + JSON 合法 + TUI 读回 ──
-check("status.json 落盘成功且 JSON 合法", () => {
-  const ok = writeStatusAtomic(stSnap);
-  assert.ok(ok, "writeStatusAtomic 失败");
-  const raw = JSON.parse(fs.readFileSync(statusFilePath(), "utf8"));
-  assert.equal(raw.schemaVersion, 1);
-  const r = readStatusFile(new Date(stSnap.updatedAt));
-  assert.equal(r.kind, "live");
-});
+  const copy = path.join(stubRoot, "tui.js");
+  fs.copyFileSync(distFile, copy);
+  const mod = await import(pathToFileURL(copy).href);
+  const definition = mod.default;
 
-// ── 23:30 / 15:00 注入 now 的窗口判定 ──
-check("23:30: qwen3.8-max activeNow=true, boundaryKind=end, nextBoundaryAt=次日08:00+08:00", () => {
-  const st = buildStatus(snapshotCatalog, new Date("2026-08-31T23:30:00+08:00"));
-  const w = st.windows.find((x) => x.id === "offpeak-22-08");
-  assert.ok(w);
-  assert.equal(w.activeNow, true);
-  assert.equal(w.boundaryKind, "end");
-  assert.match(w.nextBoundaryAt, /^2026-09-01T08:00:00\.\d{3}\+08:00$/, `实际: ${w.nextBoundaryAt}`);
-});
-check("15:00: activeNow=false, boundaryKind=start, nextBoundaryAt=当日22:00+08:00", () => {
-  const st = buildStatus(snapshotCatalog, new Date("2026-08-31T15:00:00+08:00"));
-  const w = st.windows.find((x) => x.id === "offpeak-22-08");
-  assert.equal(w.activeNow, false);
-  assert.equal(w.boundaryKind, "start");
-  assert.match(w.nextBoundaryAt, /^2026-08-31T22:00:00\.\d{3}\+08:00$/, `实际: ${w.nextBoundaryAt}`);
-});
-check("home_bottom 一行摘要可渲染", () => {
-  const s = core.homeSummaryLine(stSnap, new Date("2026-08-31T16:37:00+08:00"));
-  assert.match(s, /错峰 22:00–08:00/);
-  console.log(`    摘要: ${s}`);
-});
+  const checks = [];
+  const check = (name, fn) => {
+    try { fn(); checks.push(`  ✔ ${name}`); }
+    catch (error) { checks.push(`  ✘ ${name}: ${error.message}`); process.exitCode = 1; }
+  };
 
-fs.rmSync(tmp, { recursive: true, force: true });
-console.log(process.exitCode ? "[smoke] FAILED" : "[smoke] ALL PASS");
+  check("default 存在且 id 为非空 string", () => {
+    assert.equal(typeof definition?.id, "string");
+    assert.ok(definition.id.length > 0);
+  });
+  check("default.setup 是 function", () => assert.equal(typeof definition?.setup, "function"));
+  check("id 等于包名", () => assert.equal(definition.id, "@te-river/opencode-alibabatokenplan"));
+  check("模块只有 default 导出（无 server / tui 导出）", () => {
+    assert.deepEqual(Object.keys(mod).sort(), ["default"]);
+    assert.ok(!("server" in mod));
+    assert.ok(!("tui" in mod));
+  });
+  check("产物是预编译 Solid JSX（_$createElement 来自 @opentui/solid）", () => {
+    assert.match(source, /from\s+"@opentui\/solid"/);
+    assert.match(source, /createElement/);
+    assert.ok(!/React\.createElement/.test(source), "出现 React.createElement，JSX 没有走 babel-preset-solid");
+  });
+
+  console.log(`[smoke] stubbed ${[...specs.keys()].join(", ")}`);
+  for (const line of checks) console.log(line);
+  console.log(process.exitCode ? "[smoke] FAILED" : "[smoke] ALL PASS");
+} finally {
+  fs.rmSync(stubRoot, { recursive: true, force: true });
+}

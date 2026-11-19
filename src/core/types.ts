@@ -1,30 +1,31 @@
-// 核心类型 —— 原文照 04 号契约 §1。core 层不 import opencode，可 node 直测。
+// 核心类型 —— 优惠数据模型。core 层不 import opencode，可 node 直测。
+// 0.1.4：移除 Qoder 快照，优惠数据仅来自阿里云百炼 Token Plan（live/cli/snapshot 三级回退）。
 
-export type OfferOrigin = "bailian-live" | "bailian-cli" | "bailian-snapshot" | "qoder-snapshot";
+export type OfferOrigin = "bailian-live" | "bailian-cli" | "bailian-snapshot";
 export type OfferKind = "time-window" | "flat-cut" | "free-calls" | "policy";
-export type OfferUnit = "credits-factor" | "cny-price"; // 两单位永不互算
+export type OfferUnit = "cny-price"; // 百炼 ¥ 价格倍率
 
 export interface OfferRule {
   id: string;
   kind: OfferKind;
   label: string; // label 如 "错峰 5 折"
-  models: string[]; // 生态内 canonical id, 小写
+  models: string[]; // canonical id, 小写
   unit: OfferUnit;
   factor?: number;
   baseFactor?: number; // baseFactor=划线原价倍率
   window?: { start: string; end: string; tz: string }; // "HH:MM", 跨午夜=start>end
-  batchStack?: number; // 仅百炼 Batch 叠加(03/D2c)
+  batchStack?: number; // Batch 叠加系数(03/D2c)
   note?: string;
   expiry?: string; // free-calls/policy 文案与截止
   links: string[];
-  origins: OfferOrigin[]; // origins 并集=双源印证
+  origins: OfferOrigin[];
   snapshotDate?: string;
 }
 
 export interface DiscountEntry {
   model: string;
   applies: OfferRule[];
-  /** m3：按 unit 分桶各取数值最小（两套单位不互算，跨单位比较无意义，故弃单值 bestFactor/bestRuleId） */
+  /** 按 unit 分桶各取数值最小 */
   bestFactors?: Partial<Record<OfferUnit, number>>;
 }
 
@@ -55,7 +56,7 @@ export interface StatusFile {
   timezone: "Asia/Shanghai";
   creditsPerYuan: 250;
   creditsRateNote: "据百炼计费示例换算，非官方汇率";
-  sources: { catalog: OfferOrigin; qoderSnapshot: "2026-08-31"; error?: string };
+  sources: { catalog: OfferOrigin; error?: string };
   windows: WindowView[];
   offers: OfferRule[];
   discounts: DiscountEntry[];
@@ -65,7 +66,6 @@ export interface StatusFile {
     cache: string;
     output: string;
     bands?: "峰/谷";
-    creditsFactor?: string;
     badge?: { label: string; countdown: string };
   }[];
   quota: { available: boolean; checkedAt?: string; data?: unknown; hint?: string };

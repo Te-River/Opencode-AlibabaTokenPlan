@@ -1,6 +1,9 @@
 // src/tui/index.tsx
-import { createElement, setProp, effect, insert, createComponent } from "@opentui/solid";
-import { createSignal, onCleanup } from "solid-js";
+import { createComponent as _$createComponent4 } from "@opentui/solid";
+import { Plugin } from "@opencode/plugin/tui";
+
+// src/tui/state.ts
+import { onCleanup, createSignal } from "solid-js";
 
 // src/core/bailian-snapshot.ts
 var CREDITS_PER_YUAN = 250;
@@ -15,207 +18,88 @@ var TOKEN_PLAN_TEXT_MODELS = [
   "glm-5.2",
   "deepseek-v4-pro-0813"
 ];
-var BAILIAN_WINDOW_RULES = [
-  {
-    id: "night-qwen38-max",
-    label: "Token Plan \u591C\u95F4\u4E94\u6298",
-    models: ["qwen3.8-max"],
-    factor: 0.5,
-    start: "22:00",
-    end: "08:00",
-    source: "\u5B98\u65B9\u6587\u6863 \xB7 Token Plan\uFF08\u4E2A\u4EBA\u7248\uFF09\u6982\u8FF0"
-  },
-  {
-    id: "night-deepseek-v4-pro",
-    label: "Token Plan \u591C\u95F4\u4E94\u6298",
-    models: ["deepseek-v4-pro-0813"],
-    factor: 0.5,
-    start: "22:00",
-    end: "08:00",
-    source: "\u5B98\u65B9\u6587\u6863 \xB7 Token Plan\uFF08\u4E2A\u4EBA\u7248\uFF09\u6982\u8FF0"
-  }
-];
-
-// src/core/qoder-snapshot.ts
-var QODER_SNAPSHOT_DATE = "2026-08-31";
-var W_OFFPEAK = { start: "22:00", end: "08:00", tz: "Asia/Shanghai" };
-var L_QWENMAX = "https://docs.qoder.cn/events/qwen-max";
-var L_QWEN37 = "https://docs.qoder.cn/product-overview/qwen-3-7-series-model-staggering-discount";
-var L_OFFPEAK_RULES = "https://help.aliyun.com/document_detail/3042139.html";
-var L_ULTIMATE = "https://docs.qoder.com/zh/events/ultimatediscount";
-var L_CANTUS = "https://docs.qoder.com/zh/events/cantuslaunch";
-var L_FREECALLS = "https://docs.qoder.com/zh/events/ultimatefreecalls";
-var L_REFERRAL = "https://qoder.cn/referral";
-function qoderSnapshotOffers() {
-  const S = QODER_SNAPSHOT_DATE;
-  const o = (r) => ({
-    ...r,
-    origins: ["qoder-snapshot"],
-    snapshotDate: S
-  });
+function bailianSnapshotModels() {
+  const P = (name, type, price, unit = "\u6BCF\u767E\u4E07tokens", band, discount) => ({ name, type, price, unit, ...band ? { band } : {}, ...discount !== void 0 ? { discount } : {} });
   return [
-    o({
-      id: "atp-offpeak-qwen38",
-      kind: "time-window",
-      label: "\u9519\u5CF0 5 \u6298\uFF08Off-Peak 50% off\uFF09",
-      models: ["qwen3.8-max"],
-      unit: "credits-factor",
-      factor: 0.25,
-      baseFactor: 0.5,
-      window: { ...W_OFFPEAK },
-      note: "\u5E38\u89C4 0.5x \u2192 \u9519\u5CF0\u65F6\u6BB5 0.25x\uFF085 \u6298\uFF09",
-      links: [L_QWENMAX]
-    }),
-    o({
-      id: "atp-offpeak-qwen37max",
-      kind: "time-window",
-      label: "\u9519\u5CF0 2 \u6298\uFF08Off-Peak 80% off\uFF09",
-      models: ["qwen3.7-max"],
-      unit: "credits-factor",
-      factor: 0.1,
-      baseFactor: 0.5,
-      window: { ...W_OFFPEAK },
-      note: "\u5E38\u89C4 0.5x \u2192 \u9519\u5CF0\u65F6\u6BB5 0.1x\uFF082 \u6298\uFF09",
-      links: [L_QWEN37]
-    }),
-    o({
-      id: "atp-offpeak-qwen37plus",
-      kind: "time-window",
-      label: "\u9519\u5CF0 4 \u6298\uFF08Off-Peak 60% off\uFF09",
-      models: ["qwen3.7-plus"],
-      unit: "credits-factor",
-      factor: 0.04,
-      baseFactor: 0.1,
-      window: { ...W_OFFPEAK },
-      note: "\u5E38\u89C4 0.1x \u2192 \u9519\u5CF0\u65F6\u6BB5 0.04x\uFF084 \u6298\uFF09",
-      links: [L_QWEN37]
-    }),
-    o({
-      id: "atp-flat-preview",
-      kind: "flat-cut",
-      label: "\u9650\u65F6 1 \u6298",
-      models: ["qwen3.8-max-preview"],
-      unit: "credits-factor",
-      factor: 0.1,
-      note: "\u6A21\u578B\u63CF\u8FF0\u539F\u6587\uFF1A\u5E38\u89C4\u65F6\u6BB5 1 \u6298",
-      links: [L_OFFPEAK_RULES]
-    }),
-    o({
-      id: "atp-flat-glm53f",
-      kind: "flat-cut",
-      label: "\u5212\u7EBF\u534A\u4EF7\uFF080.1 \u2192 0.05\uFF09",
-      models: ["glm-5.3-flash"],
-      unit: "credits-factor",
-      factor: 0.05,
-      baseFactor: 0.1,
-      note: "originalPriceFactor \u7ED3\u6784\uFF0C\u65E0 promotion \u6807\u8BB0\uFF08\u5FEB\u7167\uFF09",
-      links: [L_OFFPEAK_RULES]
-    }),
-    o({
-      id: "atp-flat-ultimate",
-      kind: "flat-cut",
-      label: "\u9650\u65F6\u6298\u6263\u8FDB\u884C\u4E2D",
-      models: ["ultimate", "cantus"],
-      unit: "credits-factor",
-      note: "\u6570\u503C\u672A\u516C\u5F00\uFF0C\u4EC5\u6D3B\u52A8\u6587\u6848\uFF08\u5FEB\u7167\uFF09",
-      links: [L_ULTIMATE, L_CANTUS]
-    }),
-    o({
-      id: "atp-free-200",
-      kind: "free-calls",
-      label: "\u6781\u81F4\u6A21\u578B 200 \u6B21\u514D\u8D39",
-      models: [],
-      unit: "credits-factor",
-      note: "\u514D\u8D39\u989D\u5EA6\u6D3B\u52A8\uFF1B\u5DF2\u8FC7\u671F\uFF08expired:true\uFF09",
-      expiry: "2026-07-30T23:59:59+08:00",
-      links: [L_FREECALLS]
-    }),
-    o({
-      id: "atp-free-800-2000",
-      kind: "free-calls",
-      label: "qwen3.8-max 800/2000 \u6B21\u514D\u8D39\uFF08claim\uFF09",
-      models: ["qwen3.8-max"],
-      unit: "credits-factor",
-      note: "activityId: qwen38_800_invoke / qwen38_2000_invoke\uFF08\u5FEB\u7167\uFF09",
-      links: []
-    }),
-    o({
-      id: "atp-referral",
-      kind: "policy",
-      label: "\u63A8\u8350\u8FD4\u79EF\u5206 \u226440000+",
-      models: [],
-      unit: "credits-factor",
-      note: "\u63A8\u8350\u6D3B\u52A8\u81F3 2026-09-03",
-      expiry: "2026-09-03T23:59:59+08:00",
-      links: [L_REFERRAL]
-    }),
-    o({
-      id: "atp-lite",
-      kind: "policy",
-      label: "lite \u57FA\u7840\u6A21\u578B\u964D\u7EA7\u653F\u7B56",
-      models: ["lite"],
-      unit: "credits-factor",
-      note: "Credits \u8017\u5C3D\u540E\u964D\u7EA7\u4E3A lite \u57FA\u7840\u6A21\u578B\uFF08\u514D\u8D39/\u6BCF\u65E5\u9650\u989D/\u9AD8\u5CF0\u65F6\u6BB5\u53D8\u6162\uFF09\uFF1B\u4F59\u989D <200 \u4F4E\u989D\u63D0\u793A\uFF1B\u9996\u6708 prorated\uFF08\u5FEB\u7167\uFF09",
-      links: []
-    })
+    {
+      family: "qwen3.8-max",
+      model: "qwen3.8-max",
+      provider: "qwen",
+      context: 1e6,
+      prices: [P("\u8F93\u5165", "input_token", 12), P("\u8F93\u51FA", "output_token", 36), P("\u8F93\u5165\uFF08\u7F13\u5B58\u547D\u4E2D\uFF09", "input_token_cache", 1.5), P("\u8F93\u5165\uFF08Batch Chat\uFF09", "input_token_batch_chat", 12, "\u6BCF\u767E\u4E07tokens", void 0, 0.5), P("\u8F93\u51FA\uFF08Batch Chat\uFF09", "output_token_batch_chat", 36, "\u6BCF\u767E\u4E07tokens", void 0, 0.5)]
+    },
+    {
+      family: "qwen3.8-flash",
+      model: "qwen3.8-flash",
+      provider: "qwen",
+      context: 1e6,
+      prices: [P("\u8F93\u5165", "input_token", 0.8), P("\u8F93\u51FA", "output_token", 2.7), P("\u8F93\u5165\uFF08\u7F13\u5B58\u547D\u4E2D\uFF09", "input_token_cache", 0.1)]
+    },
+    {
+      family: "qwen3.7-max",
+      model: "qwen3.7-max",
+      provider: "qwen",
+      context: 1e6,
+      prices: [P("\u8F93\u5165", "input_token", 12), P("\u8F93\u51FA", "output_token", 36), P("\u8F93\u5165\uFF08\u7F13\u5B58\u547D\u4E2D\uFF09", "input_token_cache", 2.4), P("\u8F93\u5165", "input_token", 12, "\u6BCF\u767E\u4E07tokens", "standard", 0.5)]
+    },
+    {
+      family: "qwen3.6-plus",
+      model: "qwen3.6-plus",
+      provider: "qwen",
+      context: 1e6,
+      prices: [P("\u8F93\u5165", "input_token", 0.8), P("\u8F93\u51FA", "output_token", 4.8), P("\u8F93\u5165\uFF08\u7F13\u5B58\u547D\u4E2D\uFF09", "input_token_cache", 0.08)]
+    },
+    {
+      family: "deepseek",
+      model: "deepseek-v4-pro-0813",
+      provider: "deepseek",
+      context: 1e6,
+      prices: [P("\u8F93\u5165", "input_token", 9, "\u6BCF\u767E\u4E07tokens", "peak"), P("\u8F93\u5165", "input_token", 4.5, "\u6BCF\u767E\u4E07tokens", "offpeak"), P("\u8F93\u51FA", "output_token", 27, "\u6BCF\u767E\u4E07tokens", "peak"), P("\u8F93\u51FA", "output_token", 13.5, "\u6BCF\u767E\u4E07tokens", "offpeak"), P("\u8F93\u5165\uFF08\u7F13\u5B58\u547D\u4E2D\uFF09", "input_token_cache", 0.9, "\u6BCF\u767E\u4E07tokens", "peak"), P("\u8F93\u5165\uFF08\u7F13\u5B58\u547D\u4E2D\uFF09", "input_token_cache", 0.45, "\u6BCF\u767E\u4E07tokens", "offpeak")]
+    },
+    {
+      family: "deepseek",
+      model: "deepseek-v4-pro",
+      provider: "deepseek",
+      context: 1e6,
+      prices: [P("\u8F93\u5165", "input_token", 12), P("\u8F93\u51FA", "output_token", 24), P("\u8F93\u5165\uFF08\u7F13\u5B58\u547D\u4E2D\uFF09", "input_token_cache", 1)]
+    },
+    {
+      family: "glm-5.2",
+      model: "glm-5.2",
+      provider: "zhipu",
+      context: 2e5,
+      prices: [P("\u8F93\u5165", "input_token", 8), P("\u8F93\u51FA", "output_token", 28), P("\u8F93\u5165\uFF08\u7F13\u5B58\u547D\u4E2D\uFF09", "input_token_cache", 2)]
+    },
+    {
+      family: "wan-video",
+      model: "wan-video",
+      provider: "wan",
+      prices: [P("\u89C6\u9891\u751F\u6210\uFF08480P\uFF09", "video_ratio_480p", 0.45, "\u6BCF\u79D2"), P("\u89C6\u9891\u751F\u6210\uFF08720P\uFF09", "video_ratio_720p", 0.9, "\u6BCF\u79D2"), P("\u89C6\u9891\u751F\u6210\uFF081080P\uFF09", "video_ratio_1080p", 1.8, "\u6BCF\u79D2"), P("\u89C6\u9891\u751F\u6210\uFF08720P\xB7\u9650\u65F6\uFF09", "video_ratio_720p", 0.6, "\u6BCF\u79D2", void 0, 0.7)]
+    },
+    {
+      family: "qwen-image",
+      model: "qwen-image",
+      provider: "qwen",
+      prices: [P("\u56FE\u7247\u751F\u6210", "image_number", 0.25, "\u6BCF\u5F20")]
+    },
+    {
+      family: "qwen-image-plus",
+      model: "qwen-image-plus",
+      provider: "qwen",
+      prices: [P("\u56FE\u7247\u751F\u6210", "image_number", 0.2, "\u6BCF\u5F20")]
+    }
   ];
 }
-var QODER_INSALE_FACTORS = {
-  auto: { factor: 0.5 },
-  "qwen3.8-flash": { factor: 0.1 },
-  "qwen3.7-flash": { factor: 0.1 },
-  "deepseek-v4-pro": { factor: 0.8 },
-  "deepseek-v4-flash": { factor: 0.3 },
-  "glm-5.3": { factor: 0.6 },
-  "glm-5.2": { factor: 0.6 },
-  "kimi-k2.7-code": { factor: 0.3, note: "highspeed 0.6" },
-  "minimax-m2.7": { factor: 0.2 }
-};
 
 // src/core/merge.ts
-var MODEL_ALIASES = {
-  qmodel_38max: "qwen3.8-max",
-  qmodel_latest: "qwen3.7-max",
-  qmodel: "qwen3.7-plus",
-  qfmodel: "qwen3.8-flash",
-  q37fmodel: "qwen3.7-flash",
-  dmodel: "deepseek-v4-pro",
-  gmodel: "glm-5.3",
-  gfmodel: "glm-5.3-flash",
-  gm51model: "glm-5.2",
-  kmodel: "kimi-k2.7-code",
-  mmodel: "minimax-m2.7"
-};
-function canonicalize(model) {
-  const k = String(model || "").toLowerCase();
-  return MODEL_ALIASES[k] ?? k;
-}
 function originRank(origin) {
-  return { "bailian-live": 0, "bailian-cli": 1, "qoder-snapshot": 2, "bailian-snapshot": 3 }[origin];
+  return { "bailian-live": 0, "bailian-cli": 1, "bailian-snapshot": 2 }[origin];
 }
-var OFFPEAK_WINDOW = { start: "22:00", end: "08:00", tz: "Asia/Shanghai" };
-function catalogToOffers(models, origin, snapshotDate) {
+function catalogToOffers(models, origin, snapshotDate, documentRules = []) {
   const out = [];
-  const offpeakModels = models.filter((m) => m.prices.some((p) => p.band === "offpeak")).map((m) => m.model.toLowerCase());
-  if (offpeakModels.length) {
-    out.push({
-      id: "catalog-offpeak",
-      kind: "time-window",
-      label: "\u76EE\u5F55\u591C\u95F4\u4F18\u60E0\uFF08\u9519\u5CF0 5 \u6298\uFF09",
-      models: offpeakModels,
-      unit: "cny-price",
-      factor: 0.5,
-      window: { ...OFFPEAK_WINDOW },
-      note: "\u76EE\u5F55\u542B offpeak \u6863\u7684\u6A21\u578B\uFF0C\u8C37\u65F6\u4EF7=\u5CF0\u65F6 5 \u6298",
-      links: [],
-      origins: [origin],
-      ...snapshotDate ? { snapshotDate } : {}
-    });
-  }
-  const windowedModels = /* @__PURE__ */ new Set([
-    ...out.filter((o) => o.kind === "time-window").flatMap((o) => o.models.map((m) => m.toLowerCase())),
-    ...BAILIAN_WINDOW_RULES.flatMap((r) => r.models.map((m) => m.toLowerCase()))
-  ]);
+  const windowedModels = new Set(
+    documentRules.filter((rule) => rule.kind === "time-window").flatMap((rule) => rule.models.map((model) => model.toLowerCase()))
+  );
   for (const m of models) {
     const model = m.model.toLowerCase();
     if (windowedModels.has(model)) continue;
@@ -285,10 +169,142 @@ function mergeOffers(all) {
   });
   return list;
 }
-function isCrossVerified(r) {
-  const hasQ = r.origins.includes("qoder-snapshot");
-  const hasB = r.origins.some((o) => o.startsWith("bailian-"));
-  return hasQ && hasB;
+
+// src/core/discount-doc.ts
+var PERSONAL_PLAN_OFFERS_URL = "https://help.aliyun.com/zh/model-studio/token-plan-personal-overview#tppo-h-models";
+var DOCUMENT_NAME = "\u5B98\u65B9\u6587\u6863 \xB7 Token Plan\uFF08\u4E2A\u4EBA\u7248\uFF09\u6982\u8FF0";
+var TIME_ZONE = "Asia/Shanghai";
+function htmlText(html) {
+  const entities = {
+    amp: "&",
+    apos: "'",
+    gt: ">",
+    lt: "<",
+    nbsp: " ",
+    quot: '"'
+  };
+  return html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ").replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ").replace(/<!--[\s\S]*?-->/g, " ").replace(/<[^>]+>/g, " ").replace(/&(#x[\da-f]+|#\d+|amp|apos|gt|lt|nbsp|quot);/gi, (entity, key) => {
+    if (key[0] !== "#") return entities[key.toLowerCase()] ?? entity;
+    const hex = key[1]?.toLowerCase() === "x";
+    const value = Number.parseInt(key.slice(hex ? 2 : 1), hex ? 16 : 10);
+    return Number.isSafeInteger(value) && value >= 0 && value <= 1114111 ? String.fromCodePoint(value) : entity;
+  }).replace(/[\u200b\u200c\u200d\ufeff]/g, "").replace(/\s+/g, " ").trim();
+}
+function discountValue(raw) {
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0 || value > 10) throw new Error(`\u6587\u6863\u6298\u6570\u65E0\u6548\uFF1A${raw}`);
+  return value;
+}
+function chineseDiscount(value) {
+  if (value === 10) return "\u5341";
+  const digits = { "0": "\u96F6", "1": "\u4E00", "2": "\u4E8C", "3": "\u4E09", "4": "\u56DB", "5": "\u4E94", "6": "\u516D", "7": "\u4E03", "8": "\u516B", "9": "\u4E5D", ".": "\u70B9" };
+  return String(value).split("").map((char) => digits[char] ?? char).join("");
+}
+function timePart(hour, minute) {
+  const h = Number(hour);
+  const m = Number(minute);
+  if (!Number.isInteger(h) || h < 0 || h > 23 || !Number.isInteger(m) || m < 0 || m > 59) {
+    throw new Error(`\u6587\u6863\u65F6\u95F4\u65E0\u6548\uFF1A${hour}:${minute}`);
+  }
+  return `${String(h).padStart(2, "0")}:${minute}`;
+}
+function readWindow(text) {
+  const match = text.match(/每晚\s*(\d{1,2})\s*:\s*(\d{2})\s*(?:-|–|—|~|～|至)\s*(?:次日\s*)?(\d{1,2})\s*:\s*(\d{2})/i);
+  if (!match) throw new Error("\u6587\u6863\u591C\u95F4\u6D3B\u52A8\u7F3A\u5C11 HH:MM \u65F6\u95F4\u7A97\u53E3");
+  return { start: timePart(match[1], match[2]), end: timePart(match[3], match[4]), tz: TIME_ZONE };
+}
+function readModels(raw) {
+  const models = [...new Set(raw.split(/\s*(?:、|，|,|和|及)\s*/).map((model) => model.trim().toLowerCase()).filter(Boolean))];
+  if (!models.length || models.some((model) => !/^[a-z0-9][a-z0-9._-]*$/i.test(model))) {
+    throw new Error(`\u6587\u6863\u6A21\u578B\u5217\u8868\u65E0\u6CD5\u8BC6\u522B\uFF1A${raw}`);
+  }
+  return models;
+}
+function parseOffers(section, fetchedAt) {
+  const freeModels = new Set(
+    [...section.matchAll(/([a-z0-9][a-z0-9._-]*)\s+限时免费\s*[：:]\s*调用不消耗\s*Credits/gi)].map((match) => match[1].toLowerCase())
+  );
+  const offers = [];
+  const date = fetchedAt.slice(0, 10);
+  const addRule = (id, label, models, factor, window, baseFactor) => {
+    const applicable = models.filter((model) => !freeModels.has(model));
+    if (!applicable.length) return;
+    offers.push({
+      id,
+      kind: "time-window",
+      label,
+      models: applicable,
+      unit: "cny-price",
+      factor,
+      ...baseFactor !== void 0 ? { baseFactor } : {},
+      window,
+      note: baseFactor === void 0 ? DOCUMENT_NAME : `${DOCUMENT_NAME} \xB7 \u9884\u89C8\u6D3B\u52A8\u4E0E\u591C\u95F4\u6298\u6263\u53E0\u52A0`,
+      links: [PERSONAL_PLAN_OFFERS_URL],
+      origins: ["bailian-live"],
+      snapshotDate: date
+    });
+  };
+  const previewPattern = /([a-z0-9][a-z0-9._-]*)\s+预览权益\s*[：:]([^。]*)/gi;
+  for (const match of section.matchAll(previewPattern)) {
+    const model = match[1].toLowerCase();
+    const text = match[2];
+    if (!/再享|每晚/.test(text)) continue;
+    const base = text.match(/低至\s*(\d+(?:\.\d+)?)\s*折/);
+    const night = text.match(/再享\s*(\d+(?:\.\d+)?)\s*折/);
+    if (!base || !night) throw new Error(`\u6587\u6863\u9884\u89C8\u6D3B\u52A8\u5B57\u6BB5\u4E0D\u5B8C\u6574\uFF1A${model}`);
+    const baseDiscount = discountValue(base[1]);
+    const nightDiscount = discountValue(night[1]);
+    const window = readWindow(text);
+    const factor = Math.round(baseDiscount / 10 * (nightDiscount / 10) * 1e3) / 1e3;
+    addRule(
+      `doc-preview-night-${model}`,
+      `Token Plan \u9884\u89C8${chineseDiscount(baseDiscount)}\u6298 \xB7 \u591C\u95F4\u518D${chineseDiscount(nightDiscount)}\u6298`,
+      [model],
+      factor,
+      window,
+      baseDiscount / 10
+    );
+  }
+  const nightIndex = section.search(/限时夜间折扣/);
+  if (nightIndex >= 0) {
+    const tail = section.slice(nightIndex);
+    const stop = tail.search(/。|限时免费|阿里云百炼有权/);
+    const nightText = stop >= 0 ? tail.slice(0, stop) : tail;
+    const window = readWindow(nightText);
+    const callCount = nightText.match(/调用/g)?.length ?? 0;
+    const groups = [...nightText.matchAll(/调用\s+(.+?)\s*享\s*(\d+(?:\.\d+)?)\s*折/g)];
+    if (!callCount || groups.length !== callCount) throw new Error("\u6587\u6863\u591C\u95F4\u6298\u6263\u7F3A\u5C11\u53EF\u8BC6\u522B\u7684\u6A21\u578B\u7EC4\u6216\u6298\u6570");
+    for (const group of groups) {
+      const models = readModels(group[1]);
+      const discount = discountValue(group[2]);
+      const timeKey = `${window.start.replace(":", "")}-${window.end.replace(":", "")}`;
+      addRule(
+        `doc-night-${timeKey}-${models[0]}`,
+        `Token Plan \u591C\u95F4${chineseDiscount(discount)}\u6298`,
+        models,
+        discount / 10,
+        window
+      );
+    }
+  }
+  if (!offers.length) throw new Error("\u6587\u6863\u4E0D\u542B\u4EFB\u4F55\u53EF\u8BC6\u522B\u7684\u591C\u95F4\u6A21\u578B\u4F18\u60E0");
+  return offers;
+}
+async function fetchPersonalPlanOffers(opts = {}) {
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const response = await fetchImpl(PERSONAL_PLAN_OFFERS_URL, {
+    signal: opts.signal,
+    headers: { accept: "text/html" }
+  });
+  if (!response.ok) throw new Error(`Token Plan \u6587\u6863\u8BF7\u6C42\u5931\u8D25\uFF1AHTTP ${response.status}`);
+  const text = htmlText(await response.text());
+  const sectionStart = text.indexOf("\u652F\u6301\u7684\u6A21\u578B");
+  if (sectionStart < 0) throw new Error("Token Plan \u6587\u6863\u7F3A\u5C11\u201C\u652F\u6301\u7684\u6A21\u578B\u201D\u533A\u57DF");
+  const rest = text.slice(sectionStart);
+  const sectionEnd = rest.slice("\u652F\u6301\u7684\u6A21\u578B".length).search(/支持的模型内置工具|订阅管理/);
+  const section = sectionEnd >= 0 ? rest.slice(0, sectionEnd + "\u652F\u6301\u7684\u6A21\u578B".length) : rest;
+  const fetchedAt = (opts.now ?? /* @__PURE__ */ new Date()).toISOString();
+  return { offers: parseOffers(section, fetchedAt), fetchedAt, sourceUrl: PERSONAL_PLAN_OFFERS_URL };
 }
 
 // src/core/rules.ts
@@ -299,8 +315,8 @@ function shanghaiMinutes(now = /* @__PURE__ */ new Date()) {
   return shifted.getHours() * 60 + shifted.getMinutes() + shifted.getSeconds() / 60;
 }
 function parseHm(s) {
-  const [h2, min] = s.split(":").map(Number);
-  return h2 * 60 + (min || 0);
+  const [h, min] = s.split(":").map(Number);
+  return h * 60 + (min || 0);
 }
 function windowState(rule, now = /* @__PURE__ */ new Date()) {
   const start = parseHm(rule.start);
@@ -333,95 +349,37 @@ function shanghaiISO(ms) {
 function fmtCountdown(mins) {
   if (mins <= 0) return "\u4E0D\u8DB3 1 \u5206\u949F";
   const d = Math.floor(mins / DAY_MIN);
-  const h2 = Math.floor(mins % DAY_MIN / 60);
+  const h = Math.floor(mins % DAY_MIN / 60);
   const m = mins % 60;
   const parts = [];
   if (d) parts.push(d + " \u5929");
-  if (h2) parts.push(h2 + " \u5C0F\u65F6");
+  if (h) parts.push(h + " \u5C0F\u65F6");
   parts.push(m + " \u5206\u949F");
   return parts.join(" ");
 }
 function fmtHMS(msRemaining) {
   const total = Math.max(0, Math.floor(msRemaining / 1e3));
-  const h2 = Math.floor(total / 3600);
+  const h = Math.floor(total / 3600);
   const m = Math.floor(total % 3600 / 60);
   const s = total % 60;
   const p = (n) => String(n).padStart(2, "0");
-  return `${p(h2)}:${p(m)}:${p(s)}`;
+  return `${p(h)}:${p(m)}:${p(s)}`;
 }
 function fmtShortDur(msRemaining) {
-  const total = Math.max(0, Math.floor(msRemaining / 6e4));
+  if (msRemaining <= 0) return "0s";
+  if (msRemaining < 6e4) return `${Math.ceil(msRemaining / 1e3)}s`;
+  const total = Math.floor(msRemaining / 6e4);
   const d = Math.floor(total / DAY_MIN);
-  const h2 = Math.floor(total % DAY_MIN / 60);
+  const h = Math.floor(total % DAY_MIN / 60);
   const m = total % 60;
-  if (d) return `${d}d${h2}h`;
-  if (h2) return `${h2}h${m}m`;
+  if (d) return `${d}d${h}h`;
+  if (h) return `${h}h${m}m`;
   return `${m}m`;
 }
 
-// src/core/text.ts
-function fmtFactor(f) {
-  if (f === void 0 || !Number.isFinite(f)) return void 0;
-  let s = f.toFixed(2);
-  s = s.replace(/0+$/, "").replace(/\.$/, ".0");
-  return s + "x";
-}
-function sourceBadgeLine(st) {
-  const cat = st.sources.catalog;
-  const catLabel = cat === "qoder-snapshot" ? "Qoder\u5FEB\u7167" : cat === "bailian-live" ? "\u5B9E\u65F6" : cat === "bailian-cli" ? "CLI" : "\u5FEB\u7167";
-  const t = st.updatedAt ? new Date(st.updatedAt) : void 0;
-  const hhmm = t && !Number.isNaN(t.getTime()) ? t.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Shanghai" }) : "";
-  return `\u6E90:${catLabel}${hhmm ? " " + hhmm : ""} \xB7 Qoder\u5FEB\u7167${st.sources.qoderSnapshot.slice(5)}`;
-}
-function homeSummaryLine(st, now = /* @__PURE__ */ new Date()) {
-  const w = st.windows.find((x) => x.id.startsWith("offpeak")) ?? st.windows[0];
-  if (!w) return "Token Plan \u6682\u65E0\u5DF2\u77E5\u4F18\u60E0";
-  const starModel = w.models.find((m) => m.model === "qwen3.8-max") ?? w.models.find((m) => m.model.startsWith("qwen")) ?? w.models[0];
-  const parts = [`\u9519\u5CF0 ${w.start}\u2013${w.end}`];
-  if (starModel) {
-    const seg = starModel.regular && starModel.effective && starModel.regular !== starModel.effective ? `${starModel.model}\xD7${starModel.regular.replace("x", "")}/\xD7${starModel.effective.replace("x", "")}` : `${starModel.model}\xD7${(starModel.effective ?? starModel.regular ?? "").replace("x", "")}`;
-    parts.push(seg);
-  }
-  const ws = windowState(w, now);
-  parts.push(`${ws.active ? "\u8DDD\u7ED3\u675F" : "\u8DDD\u5F00\u59CB"} ${fmtShortDur(ws.nextBoundaryAtMs - now.getTime())}`);
-  parts.push(sourceBadgeLine(st));
-  return parts.join(" \xB7 ");
-}
-
-// src/core/provider.ts
-var FAMILY_ID_RE = /^alibaba(?:-.+)?$/i;
-var STRICT_ID_RE = /^alibaba-token-plan(?:-[a-z]+)*$/i;
-var STRICT_HOST_RE = /^token-plan(?:\.[a-z0-9-]+)*\.maas\.aliyuncs\.com$/i;
-var FAMILY_MAAS_HOST_RE = /(?:^|\.)maas\.aliyuncs\.com$/i;
-var FAMILY_DASHSCOPE_HOST_RE = /(?:^|\.)dashscope(?:-[a-z]+)?\.aliyuncs\.com$/i;
-function hostOf(baseURL) {
-  if (!baseURL) return "";
-  try {
-    return new URL(String(baseURL)).host.toLowerCase();
-  } catch {
-    return "";
-  }
-}
-function matchProvider(providerID, baseURL, mode = "family") {
-  const id = typeof providerID === "string" ? providerID.trim() : "";
-  const host = hostOf(baseURL);
-  if (mode === "strict") {
-    if (STRICT_ID_RE.test(id)) return true;
-    return !!host && STRICT_HOST_RE.test(host);
-  }
-  if (FAMILY_ID_RE.test(id)) return true;
-  if (!host) return false;
-  return FAMILY_MAAS_HOST_RE.test(host) || FAMILY_DASHSCOPE_HOST_RE.test(host);
-}
-function isProviderMatchMode(v) {
-  return v === "family" || v === "strict";
-}
-
 // src/core/status.ts
-import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-var WRITTEN_BY = "@te-river/opencode-alibabatokenplan/server@0.1.3";
 var STALE_AFTER_SEC = 600;
 var CATALOG_ORIGIN = {
   live: "bailian-live",
@@ -432,22 +390,22 @@ function windowId(start, end) {
   if (start === "22:00" && end === "08:00") return "offpeak-22-08";
   return `win-${start.replace(":", "")}-${end.replace(":", "")}`;
 }
-function buildOffers(catalog) {
+function buildOffers(catalog, documentRules = []) {
   const origin = CATALOG_ORIGIN[catalog.source] ?? "bailian-snapshot";
-  const legacy = BAILIAN_WINDOW_RULES.map((r) => ({
-    id: r.id,
-    kind: "time-window",
-    label: r.label,
-    models: [...r.models],
-    unit: "cny-price",
-    factor: r.factor,
-    window: { start: r.start, end: r.end, tz: "Asia/Shanghai" },
-    note: r.source,
-    links: [],
-    origins: ["bailian-snapshot"],
-    snapshotDate: BAILIAN_SNAPSHOT_AT
-  }));
-  return mergeOffers([...qoderSnapshotOffers(), ...legacy, ...catalogToOffers(catalog.models, origin, catalog.fetchedAt?.slice(0, 10))]);
+  return mergeOffers([
+    ...documentRules,
+    ...catalogToOffers(catalog.models, origin, catalog.fetchedAt?.slice(0, 10), documentRules)
+  ]);
+}
+function zheOf(factor) {
+  return Math.round(factor * 1e3) / 100;
+}
+function windowLabel(rules) {
+  const zhe = [...new Set(rules.flatMap((rule) => rule.factor === void 0 ? [] : [zheOf(rule.factor)]))];
+  if (!zhe.length) return rules[0]?.label ?? "Token Plan \u591C\u95F4\u6298\u6263";
+  const lo = Math.min(...zhe);
+  const hi = Math.max(...zhe);
+  return lo === hi ? `Token Plan \u591C\u95F4${chineseDiscount(lo)}\u6298` : `Token Plan \u591C\u95F4\u6298\u6263 ${lo}\u2013${hi} \u6298`;
 }
 function buildWindows(offers, now) {
   const byWindow = /* @__PURE__ */ new Map();
@@ -466,13 +424,12 @@ function buildWindows(offers, now) {
     const w = windowState(g, now);
     const models = [];
     for (const r of g.rules) {
-      const cross = isCrossVerified(r);
       for (const m of r.models) {
         models.push({
           model: m,
           regular: fmtFactor(r.baseFactor),
           effective: fmtFactor(r.factor),
-          badge: r.label + (cross ? " \xB7 \u53CC\u6E90\u5370\u8BC1" : ""),
+          badge: r.label,
           origins: r.origins,
           links: r.links
         });
@@ -483,9 +440,11 @@ function buildWindows(offers, now) {
       if (fa !== fb) return fa - fb;
       return a.model.localeCompare(b.model);
     });
+    const sourceDate = g.rules.reduce((latest, rule) => rule.snapshotDate && (!latest || rule.snapshotDate > latest) ? rule.snapshotDate : latest, void 0);
+    const label = windowLabel(g.rules) + (sourceDate ? ` \xB7 \u6587\u6E90 ${sourceDate}` : "");
     out.push({
       id: windowId(g.start, g.end),
-      label: g.rules[0].label,
+      label,
       start: g.start,
       end: g.end,
       tz: g.tz,
@@ -497,6 +456,12 @@ function buildWindows(offers, now) {
   }
   out.sort((a, b) => Number(b.id.startsWith("offpeak")) - Number(a.id.startsWith("offpeak")) || a.start.localeCompare(b.start));
   return out;
+}
+function fmtFactor(f) {
+  if (f === void 0 || !Number.isFinite(f)) return void 0;
+  let s = f.toFixed(2);
+  s = s.replace(/0+$/, "").replace(/\.$/, ".0");
+  return s + "x";
 }
 function buildDiscounts(offers) {
   const byModel = /* @__PURE__ */ new Map();
@@ -551,15 +516,14 @@ function buildTextModels(models, windows, now) {
       if (w.models.some((x) => x.model === name)) {
         const ws = windowState(w, now);
         badge = {
-          label: w.label + (w.models.find((x) => x.model === name)?.badge?.includes("\u53CC\u6E90") ? " \xB7 \u53CC\u6E90\u5370\u8BC1" : ""),
+          label: w.label,
           countdown: ws.active ? `${fmtCountdown(ws.minutesToNextBoundary)}\u540E\u7ED3\u675F\uFF08${w.end}\uFF09` : `${fmtCountdown(ws.minutesToNextBoundary)}\u540E\u5F00\u59CB\uFF08${w.start}\uFF09`
         };
         break;
       }
     }
-    const insale = QODER_INSALE_FACTORS[name];
     if (!m) {
-      return { model: name, input: "\u2014", cache: "\u2014", output: "\u2014", ...insale ? { creditsFactor: fmtFactor(insale.factor) } : {}, ...badge ? { badge } : {} };
+      return { model: name, input: "\u2014", cache: "\u2014", output: "\u2014", ...badge ? { badge } : {} };
     }
     const peakIn = pickPrice(m.prices, "input_token", "peak");
     const offIn = pickPrice(m.prices, "input_token", "offpeak");
@@ -576,7 +540,6 @@ function buildTextModels(models, windows, now) {
       cache: dual ? pair(stdCache, offCache) : pair(stdCache),
       output: dual ? pair(stdOut, offOut) : pair(stdOut),
       ...dual ? { bands: "\u5CF0/\u8C37" } : {},
-      ...insale ? { creditsFactor: fmtFactor(insale.factor) } : {},
       ...badge ? { badge } : {}
     };
   });
@@ -585,16 +548,17 @@ function buildNotices(offers, now) {
   return offers.filter((r) => r.kind === "free-calls" || r.kind === "policy").map((r) => ({
     kind: r.kind,
     text: `${r.label}${r.note ? " \u2014 " + r.note : ""}`,
-    source: r.origins.includes("qoder-snapshot") ? `Qoder \u5FEB\u7167 ${r.snapshotDate ?? QODER_SNAPSHOT_DATE}` : r.origins[0] ?? "unknown",
+    source: r.origins[0] ?? "unknown",
     expired: r.expiry ? new Date(r.expiry).getTime() < now.getTime() : void 0
   }));
 }
-function buildStatus(catalog, now = /* @__PURE__ */ new Date(), quota) {
-  const offers = buildOffers(catalog);
+function buildStatus(catalog, now = /* @__PURE__ */ new Date(), quota, documentRules = []) {
+  const offers = buildOffers(catalog, documentRules);
   const windows = buildWindows(offers, now);
   return {
     schemaVersion: 1,
-    writtenBy: WRITTEN_BY,
+    writtenBy: "@te-river/opencode-alibabatokenplan@0.2.0",
+    // 0.2.0 无 server 进程：这只是 payload 身份标记
     updatedAt: now.toISOString(),
     staleAfterSec: STALE_AFTER_SEC,
     timezone: "Asia/Shanghai",
@@ -602,578 +566,2585 @@ function buildStatus(catalog, now = /* @__PURE__ */ new Date(), quota) {
     creditsRateNote: "\u636E\u767E\u70BC\u8BA1\u8D39\u793A\u4F8B\u6362\u7B97\uFF0C\u975E\u5B98\u65B9\u6C47\u7387",
     sources: {
       catalog: CATALOG_ORIGIN[catalog.source] ?? "bailian-snapshot",
-      qoderSnapshot: QODER_SNAPSHOT_DATE,
       ...catalog.error ? { error: catalog.error } : {}
     },
     windows,
     offers,
     discounts: buildDiscounts(offers),
     textModels: buildTextModels(catalog.models, windows, now),
-    quota: quota ?? { available: false, hint: "\u5B9E\u65F6\u989D\u5EA6\u9700: bl auth login --console --console-site domestic" },
+    quota: quota ?? { available: false, hint: "\u672A\u6388\u6743 \xB7 \u6253\u5F00 /tokenplan \u6388\u6743" },
     notices: buildNotices(offers, now)
   };
 }
-function isStale(st, now = /* @__PURE__ */ new Date()) {
-  const t = new Date(st.updatedAt).getTime();
-  if (Number.isNaN(t)) return true;
-  return now.getTime() - t > st.staleAfterSec * 1e3;
-}
-var STATUS_SIZE_CAP = 256 * 1024;
 function stateDir() {
   return process.env.ATP_STATE_DIR || path.join(os.homedir(), ".cache", "opencode", "alibabatokenplan");
 }
-function statusFilePath() {
-  return path.join(stateDir(), "status.json");
+
+// src/core/status-model.ts
+function buildDiscountSnapshot(now = /* @__PURE__ */ new Date(), document) {
+  const st = buildStatus(
+    { source: "snapshot", models: bailianSnapshotModels(), fetchedAt: BAILIAN_SNAPSHOT_AT },
+    now,
+    void 0,
+    document?.offers ?? []
+  );
+  return {
+    catalog: "bailian-snapshot",
+    snapshotDate: document?.fetchedAt.slice(0, 10) ?? BAILIAN_SNAPSHOT_AT,
+    windows: st.windows,
+    offers: st.offers,
+    discounts: st.discounts,
+    textModels: st.textModels,
+    notices: st.notices
+  };
 }
-function configFilePath() {
-  return process.env.ATP_CONFIG_DIR ? path.join(process.env.ATP_CONFIG_DIR, "config.jsonc") : path.join(os.homedir(), ".config", "opencode", "alibabatokenplan", "config.jsonc");
+function buildMergedStatus(quota, now = /* @__PURE__ */ new Date(), document, periods, series) {
+  const status = {
+    schemaVersion: 2,
+    updatedAt: now.toISOString(),
+    quota,
+    discount: buildDiscountSnapshot(now, document)
+  };
+  if (periods) status.usagePeriods = periods;
+  if (series) status.usageSeries = series;
+  return status;
 }
-function parseJsonc(text) {
-  let out = "";
-  let i = 0;
-  let inStr = false;
-  let esc = false;
-  while (i < text.length) {
-    const c = text[i];
-    const n = text[i + 1];
-    if (inStr) {
-      out += c;
-      if (esc) esc = false;
-      else if (c === "\\") esc = true;
-      else if (c === '"') inStr = false;
-      i++;
-      continue;
+
+// src/core/quota/redact.ts
+var PATTERNS = [
+  [/Bearer\s+[A-Za-z0-9._~+/=-]{6,}/gi, "Bearer ***"],
+  // JWT（access_token 常见形态）
+  [/eyJ[A-Za-z0-9_-]{7,}\.[A-Za-z0-9_-]{7,}\.[A-Za-z0-9_-]{4,}/g, "***"],
+  // key=value / key: value 形式的 token 类键
+  [/(("|')?(?:access_token|accessToken|innertoken|innerToken|sessionid|sessionId|ticket|cookie|Cookie|authorization)(?:"|')?\s*[:=]\s*("|')?)([^"'\s,;&}]{6,})/g, "$1***"],
+  // Cookie 整串：name=<长值>
+  [/([A-Za-z0-9_][A-Za-z0-9_.-]{1,}=)([^;\s"']{12,})/g, "$1***"]
+];
+function redact(value) {
+  let s;
+  if (typeof value === "string") s = value;
+  else if (value instanceof Error) s = value.message;
+  else {
+    try {
+      s = typeof value === "object" ? JSON.stringify(value) : String(value);
+    } catch {
+      s = "unserializable error";
     }
-    if (c === '"') {
-      inStr = true;
-      out += c;
-      i++;
-      continue;
-    }
-    if (c === "/" && n === "/") {
-      while (i < text.length && text[i] !== "\n") i++;
-      continue;
-    }
-    if (c === "/" && n === "*") {
-      i += 2;
-      while (i < text.length && !(text[i] === "*" && text[i + 1] === "/")) i++;
-      i += 2;
-      continue;
-    }
-    out += c;
-    i++;
   }
-  let res = "";
-  inStr = false;
-  esc = false;
-  i = 0;
-  while (i < out.length) {
-    const c = out[i];
-    if (inStr) {
-      res += c;
-      if (esc) esc = false;
-      else if (c === "\\") esc = true;
-      else if (c === '"') inStr = false;
-      i++;
+  for (const [re, rep] of PATTERNS) s = s.replace(re, rep);
+  return s;
+}
+
+// src/core/quota/decode.ts
+var GatewayError = class extends Error {
+  code;
+  constructor(message, code = "") {
+    super(redact(message).slice(0, 120));
+    this.name = "GatewayError";
+    this.code = code;
+  }
+};
+var round2 = (n) => Math.round(n * 100) / 100;
+function isLoginInvalid(text) {
+  return /NotLogged|NeedLogin|NotLogin|ConsoleNeedLogin/i.test(String(text ?? ""));
+}
+function unwrap(payload) {
+  const p = payload;
+  const rawCode = p?.code;
+  const code = rawCode == null ? "" : String(rawCode);
+  if (code !== "" && code !== "200" && !p?.successResponse) {
+    throw new GatewayError(p?.message ?? p?.errorMsg ?? code, code);
+  }
+  const data = p?.data;
+  if (data && typeof data === "object" && data.success === false) {
+    throw new GatewayError(data.errorCode ?? data.errorMsg ?? data.message ?? "request failed", String(data.errorCode ?? code));
+  }
+  if (data && typeof data === "object" && data.DataV2 && typeof data.DataV2 === "object" && "data" in data.DataV2) {
+    return data.DataV2.data;
+  }
+  return data ?? p;
+}
+function pickNested(src, keys, fields) {
+  if (!src || typeof src !== "object" || Array.isArray(src)) return src;
+  for (const k of keys) {
+    const v = src[k];
+    if (v && typeof v === "object" && !Array.isArray(v)) return v;
+  }
+  const d = src.data;
+  if (d && typeof d === "object" && !Array.isArray(d) && fields.some((f) => d[f] != null)) return d;
+  return src;
+}
+var normalizeInstance = (raw) => pickNested(raw, ["instanceInfo", "instance", "subscription"], ["status", "subStatus", "specCode", "remainingDays", "endTime"]);
+var normalizeUsage = (raw) => pickNested(raw, ["usage", "usageInfo"], ["per1WeekPercentage", "per1MonthPercentage", "per5HourPercentage"]);
+var normalizeAddonSummary = (raw) => pickNested(raw, ["summary", "addonSummary"], ["totalCredits", "remainingCredits", "activeCount"]);
+function ratioToPercent(v) {
+  if (typeof v !== "number" || !Number.isFinite(v)) return null;
+  return round2(Math.min(100, Math.max(0, v * 100)));
+}
+function formatTs(v) {
+  if (v == null || v === "") return "-";
+  if (typeof v !== "number" || !Number.isFinite(v)) return String(v);
+  const ms = v > 1e12 ? v : v * 1e3;
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return String(v);
+  const p2 = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
+}
+function toEpochMs(v) {
+  if (typeof v !== "number" || !Number.isFinite(v)) return null;
+  const ms = v > 1e12 ? v : v * 1e3;
+  return Number.isNaN(new Date(ms).getTime()) ? null : ms;
+}
+var USAGE_KEYS = [
+  { key: "per1WeekPercentage", window: "week" },
+  { key: "per1MonthPercentage", window: "month" },
+  { key: "per5HourPercentage", window: "5h" }
+];
+function pickUsageWindow(usageRaw) {
+  const u = normalizeUsage(usageRaw);
+  if (!u || typeof u !== "object") return null;
+  for (const { key, window } of USAGE_KEYS) {
+    const used = ratioToPercent(u[key]);
+    if (used == null) continue;
+    const resetRaw = u[key.replace("Percentage", "ResetTime")];
+    return {
+      window,
+      usedPercent: used,
+      remainingPercent: round2(Math.max(0, 100 - used)),
+      resetTime: resetRaw == null || resetRaw === "" ? null : formatTs(resetRaw),
+      resetAtMs: toEpochMs(resetRaw)
+    };
+  }
+  return null;
+}
+function normalizePlan(raw) {
+  const i = normalizeInstance(raw);
+  const status = typeof i?.status === "string" ? i.status : typeof i?.subStatus === "string" ? i.subStatus : null;
+  const endRaw = i?.endTime;
+  return {
+    status,
+    specCode: typeof i?.specCode === "string" ? i.specCode : null,
+    remainingDays: typeof i?.remainingDays === "number" && Number.isFinite(i.remainingDays) ? i.remainingDays : null,
+    endTime: endRaw == null || endRaw === "" ? null : formatTs(endRaw),
+    endAtMs: toEpochMs(endRaw)
+  };
+}
+function normalizeAddon(raw) {
+  const a = normalizeAddonSummary(raw);
+  const total = typeof a?.totalCredits === "number" && Number.isFinite(a.totalCredits) ? a.totalCredits : null;
+  const remaining = typeof a?.remainingCredits === "number" && Number.isFinite(a.remainingCredits) ? a.remainingCredits : null;
+  let usedPercent = null;
+  if (total != null && total > 0 && remaining != null) {
+    const used = Math.min(total, Math.max(0, total - remaining));
+    usedPercent = round2(used / total * 100);
+  }
+  return {
+    totalCredits: total,
+    remainingCredits: remaining,
+    activeCount: typeof a?.activeCount === "number" && Number.isFinite(a.activeCount) ? a.activeCount : null,
+    usedPercent
+  };
+}
+function normalizeQwenwork(raw) {
+  const num = (v) => typeof v === "number" && Number.isFinite(v) ? v : null;
+  const q = raw;
+  return { credits: num(q?.credits) ?? num(q?.data?.credits) ?? num(q?.data?.data?.credits) };
+}
+function classifyError(e) {
+  const message = redact(e).slice(0, 120);
+  if (e instanceof GatewayError || e?.name === "GatewayError") {
+    const code = String(e.code ?? "");
+    if (code === "401" || code === "403") return { kind: "unauthorized", message };
+    if (isLoginInvalid(code) || isLoginInvalid(message)) return { kind: "unauthorized", message };
+    if (code === "not-json") return { kind: "parse", message };
+    if (/NoPermission/i.test(code + " " + message)) return { kind: "parse", message };
+    if (/^\d{3}$/.test(code)) return { kind: "network", message };
+    return { kind: "unknown", message };
+  }
+  const name = String(e?.name ?? "");
+  if (name === "AbortError" || name === "TimeoutError" || e instanceof TypeError) return { kind: "network", message };
+  return { kind: "unknown", message };
+}
+
+// src/core/quota/credentials.ts
+import { spawn as spawn2 } from "node:child_process";
+import * as fs2 from "node:fs";
+import * as path3 from "node:path";
+
+// src/core/quota/request.ts
+import { randomBytes, randomUUID } from "node:crypto";
+var PAGE_URL = "https://bailian.console.aliyun.com/cn-beijing/subscription/token-plan/personal";
+var GATEWAY_ORIGIN = "https://bailian.console.aliyun.com";
+var REGION = "cn-beijing";
+var DATA_URL = "https://bailian-cs.console.aliyun.com/data/api.json";
+var CLI_URL = "https://bailian-cs.console.aliyun.com/cli/api.json";
+var API = {
+  subscription: "zeldaHttp.apikeyMgr./tokenplan/personal/api/v2/subscription",
+  usage: "zeldaHttp.apikeyMgr./tokenplan/personal/api/v2/usage",
+  addon: "zeldaHttp.apikeyMgr./tokenplan/personal/api/v2/addon/summary",
+  qwenwork: "zeldaHttp.apikeyMgr./qwenwork/tokenplan/personal/api/v1/qwenwork_details",
+  /** 服务端遥测小时序列（近 7 天 / 近 5h token 用量的唯一来源）。 */
+  modelMonitor: "zeldaEasy.bailian-telemetry.platform-model.getModelMonitorDataWithOss"
+};
+var COMMODITY = {
+  solo: "sfm_tokenplansolo_public_cn",
+  addon: "sfm_tokenplansoloaddon_public_cn"
+};
+function buildCornerstone() {
+  return {
+    feTraceId: randomUUID(),
+    feURL: PAGE_URL,
+    protocol: "V2",
+    console: "ONE_CONSOLE",
+    productCode: "p_efm",
+    switchUserType: 3,
+    // 数字，不是字符串
+    domain: "bailian.console.aliyun.com",
+    consoleSite: "BAILIAN_ALIYUN",
+    xsp_lang: "zh-CN",
+    "X-Anonymous-Id": randomBytes(18).toString("base64").replace(/[^A-Za-z0-9]/g, "").slice(0, 24).padEnd(24, "0")
+  };
+}
+function buildGatewayUrl(api, channel = "data") {
+  const q = new URLSearchParams({ action: "BroadScopeAspnGateway", product: "sfm_bailian", api, _v: "" });
+  return `${channel === "cli" ? CLI_URL : DATA_URL}?${q.toString()}`;
+}
+function buildRequestBody(api, data, secToken2) {
+  const params = { Api: api, V: "1.0", Data: { ...data, cornerstoneParam: buildCornerstone() } };
+  const form = { params: JSON.stringify(params), region: REGION };
+  if (secToken2) form.sec_token = secToken2;
+  return new URLSearchParams(form).toString();
+}
+function baseHeaders() {
+  return {
+    Origin: GATEWAY_ORIGIN,
+    Referer: PAGE_URL,
+    "Content-Type": "application/x-www-form-urlencoded",
+    Accept: "application/json",
+    "User-Agent": "token-plan-quota/1.0"
+  };
+}
+
+// src/core/quota/browsers.ts
+import { spawn, spawnSync as spawnSync2 } from "node:child_process";
+import * as fs from "node:fs";
+import * as net from "node:net";
+import * as os2 from "node:os";
+import * as path2 from "node:path";
+
+// src/core/quota/default-browser.ts
+import { spawnSync } from "node:child_process";
+var IDENT_RULES = [
+  { test: /operagx/i, id: "opera-gx" },
+  { test: /opera/i, id: "opera" },
+  { test: /microsoft-?edge|edgemac|msedge/i, id: "edge" },
+  { test: /chromium/i, id: "chromium" },
+  { test: /chrome/i, id: "chrome" },
+  { test: /brave/i, id: "brave" },
+  { test: /vivaldi/i, id: "vivaldi" },
+  { test: /firefox/i, id: "firefox" }
+];
+function identToBrowser(raw) {
+  const s = String(raw ?? "").trim();
+  if (!s) return null;
+  for (const r of IDENT_RULES) if (r.test.test(s)) return r.id;
+  return null;
+}
+function parseRegProgId(text) {
+  const m = /^\s*ProgId\s+REG_SZ\s+(\S+)\s*$/im.exec(String(text ?? ""));
+  return m ? m[1] : null;
+}
+function run(cmd, args) {
+  try {
+    const r = spawnSync(cmd, args, { encoding: "utf8", timeout: 2e3, windowsHide: true });
+    return r.status === 0 && typeof r.stdout === "string" ? r.stdout : null;
+  } catch {
+    return null;
+  }
+}
+var WIN_USER_CHOICE = "HKCU\\SOFTWARE\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\https\\UserChoice";
+function resolveDefaultBrowser() {
+  try {
+    if (process.platform === "win32") {
+      const out2 = run("reg", ["query", WIN_USER_CHOICE, "/v", "ProgId"]);
+      const progId = out2 ? parseRegProgId(out2) : null;
+      return progId ? identToBrowser(progId) : null;
+    }
+    if (process.platform === "darwin") {
+      const out2 = run("defaults", ["read", "com.apple.LaunchServices/com.apple.launchservices.secure", "LSHandlers"]);
+      if (!out2) return null;
+      for (const block of out2.split("}")) {
+        if (!/LSHandlerURLScheme\s*=\s*"?https"?\s*;/i.test(block)) continue;
+        const m = /LSHandlerRoleAll\s*=\s*"?([\w.\-]+)"?/i.exec(block);
+        if (m) return identToBrowser(m[1]);
+      }
+      return null;
+    }
+    const out = run("xdg-settings", ["get", "default-web-browser"]);
+    return out && out.trim() ? identToBrowser(out.trim()) : null;
+  } catch {
+    return null;
+  }
+}
+
+// src/core/quota/browsers.ts
+var CDP_READY_MS = 6e3;
+var POLL_MS = 300;
+function firstExisting(paths) {
+  for (const p of paths) {
+    try {
+      if (p && fs.existsSync(p)) return p;
+    } catch {
+    }
+  }
+  return null;
+}
+function localAppData() {
+  return process.env.LOCALAPPDATA ?? path2.join(os2.homedir(), "AppData", "Local");
+}
+function roamingAppData() {
+  return process.env.APPDATA ?? path2.join(os2.homedir(), "AppData", "Roaming");
+}
+function computeStateRoot() {
+  const override = process.env.ATP_STATE_ROOT?.trim();
+  if (override) return path2.resolve(override);
+  return process.env.LOCALAPPDATA ? path2.join(process.env.LOCALAPPDATA, "alibabatokenplan") : path2.join(os2.homedir(), ".config", "alibabatokenplan");
+}
+function legacyStateRoot() {
+  return process.env.LOCALAPPDATA ? path2.join(process.env.LOCALAPPDATA, "opencode", "alibabatokenplan") : path2.join(os2.homedir(), ".config", "opencode", "alibabatokenplan");
+}
+var migrated = false;
+function moveEntry(src, dst, recursive) {
+  if (!fs.existsSync(src) || fs.existsSync(dst)) return;
+  try {
+    fs.mkdirSync(path2.dirname(dst), { recursive: true });
+    fs.renameSync(src, dst);
+  } catch {
+    try {
+      fs.cpSync(src, dst, { recursive });
+      fs.rmSync(src, { recursive, force: true });
+    } catch {
+    }
+  }
+}
+function ensureMigrated() {
+  if (migrated) return;
+  migrated = true;
+  const next = computeStateRoot();
+  const prev = legacyStateRoot();
+  if (path2.resolve(next) === path2.resolve(prev)) return;
+  moveEntry(path2.join(prev, "credential.json"), path2.join(next, "credential.json"), false);
+  moveEntry(path2.join(prev, "settings.json"), path2.join(next, "settings.json"), false);
+  moveEntry(path2.join(prev, "browsers"), path2.join(next, "browsers"), true);
+}
+function stateRoot() {
+  ensureMigrated();
+  return computeStateRoot();
+}
+function winDefs() {
+  const pf = process.env.ProgramFiles ?? "C:\\Program Files";
+  const pf86 = process.env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)";
+  const la = localAppData();
+  const ra = roamingAppData();
+  return [
+    {
+      id: "edge",
+      label: "Microsoft Edge",
+      family: "chromium",
+      exe: [
+        path2.join(pf86, "Microsoft", "Edge", "Application", "msedge.exe"),
+        path2.join(pf, "Microsoft", "Edge", "Application", "msedge.exe"),
+        path2.join(la, "Microsoft", "Edge", "Application", "msedge.exe")
+      ]
+    },
+    {
+      id: "chrome",
+      label: "Google Chrome",
+      family: "chromium",
+      exe: [
+        path2.join(pf, "Google", "Chrome", "Application", "chrome.exe"),
+        path2.join(pf86, "Google", "Chrome", "Application", "chrome.exe"),
+        path2.join(la, "Google", "Chrome", "Application", "chrome.exe")
+      ]
+    },
+    {
+      id: "brave",
+      label: "Brave",
+      family: "chromium",
+      exe: [
+        path2.join(pf, "BraveSoftware", "Brave-Browser", "Application", "brave.exe"),
+        path2.join(la, "BraveSoftware", "Brave-Browser", "Application", "brave.exe")
+      ]
+    },
+    {
+      id: "chromium",
+      label: "Chromium",
+      family: "chromium",
+      exe: [path2.join(la, "Chromium", "Application", "chrome.exe"), path2.join(pf, "Chromium", "Application", "chrome.exe")]
+    },
+    {
+      id: "vivaldi",
+      label: "Vivaldi",
+      family: "chromium",
+      exe: [path2.join(la, "Vivaldi", "Application", "vivaldi.exe"), path2.join(pf, "Vivaldi", "Application", "vivaldi.exe")]
+    },
+    {
+      id: "opera-gx",
+      label: "Opera GX",
+      family: "chromium",
+      exe: [path2.join(la, "Programs", "Opera GX", "opera.exe")]
+    },
+    {
+      id: "opera",
+      label: "Opera",
+      family: "chromium",
+      exe: [path2.join(la, "Programs", "Opera", "opera.exe")]
+    },
+    {
+      id: "firefox",
+      label: "Firefox",
+      family: "firefox",
+      exe: [path2.join(pf, "Mozilla Firefox", "firefox.exe"), path2.join(pf86, "Mozilla Firefox", "firefox.exe")],
+      firefoxProfiles: [path2.join(ra, "Mozilla", "Firefox", "Profiles")]
+    }
+  ];
+}
+function nixDefs(platform) {
+  const home = os2.homedir();
+  if (platform === "darwin") {
+    const app = (name) => `/Applications/${name}.app/Contents/MacOS/${name}`;
+    return [
+      { id: "chrome", label: "Google Chrome", family: "chromium", exe: [app("Google Chrome")] },
+      { id: "edge", label: "Microsoft Edge", family: "chromium", exe: [app("Microsoft Edge")] },
+      { id: "brave", label: "Brave", family: "chromium", exe: [app("Brave Browser")] },
+      { id: "chromium", label: "Chromium", family: "chromium", exe: [app("Chromium")] },
+      { id: "vivaldi", label: "Vivaldi", family: "chromium", exe: [app("Vivaldi")] },
+      { id: "opera", label: "Opera", family: "chromium", exe: [app("Opera")] },
+      { id: "firefox", label: "Firefox", family: "firefox", exe: [app("Firefox")], firefoxProfiles: [path2.join(home, "Library/Application Support/Firefox/Profiles")] }
+    ];
+  }
+  const bin = (cmd) => [`/usr/bin/${cmd}`, `/usr/local/bin/${cmd}`, `/snap/bin/${cmd}`];
+  return [
+    { id: "chromium", label: "Chromium", family: "chromium", exe: [...bin("chromium"), ...bin("chromium-browser")] },
+    { id: "chrome", label: "Google Chrome", family: "chromium", exe: [...bin("google-chrome"), ...bin("google-chrome-stable")] },
+    { id: "brave", label: "Brave", family: "chromium", exe: [...bin("brave-browser")] },
+    { id: "edge", label: "Microsoft Edge", family: "chromium", exe: [...bin("microsoft-edge"), ...bin("microsoft-edge-stable")] },
+    { id: "vivaldi", label: "Vivaldi", family: "chromium", exe: [...bin("vivaldi")] },
+    { id: "opera", label: "Opera", family: "chromium", exe: [...bin("opera")] },
+    { id: "firefox", label: "Firefox", family: "firefox", exe: [...bin("firefox")], firefoxProfiles: [path2.join(home, ".mozilla/firefox")] }
+  ];
+}
+function browserDefs() {
+  if (process.platform === "win32") return winDefs();
+  const table = process.platform === "darwin" ? nixDefs("darwin") : nixDefs("linux");
+  const order = ["chromium", "chrome", "brave", "edge", "vivaldi", "opera", "firefox"];
+  const byId = new Map(table.map((d) => [d.id, d]));
+  return order.map((id) => byId.get(id)).filter((d) => !!d);
+}
+function firstFirefoxProfile(dirs) {
+  for (const root of dirs) {
+    let entries;
+    try {
+      entries = fs.readdirSync(root);
+    } catch {
       continue;
     }
-    if (c === '"') {
-      inStr = true;
-      res += c;
-      i++;
-      continue;
+    const withCookies = entries.map((e) => path2.join(root, e)).find((p) => {
+      try {
+        return fs.statSync(p).isDirectory() && fs.existsSync(path2.join(p, "cookies.sqlite"));
+      } catch {
+        return false;
+      }
+    });
+    if (withCookies) return withCookies;
+    const anyDir = entries.map((e) => path2.join(root, e)).find((p) => {
+      try {
+        return fs.statSync(p).isDirectory();
+      } catch {
+        return false;
+      }
+    });
+    if (anyDir) return anyDir;
+  }
+  return null;
+}
+var sqliteCapability = null;
+function sqliteSpecifier(host) {
+  return [host, "sqlite"].join(":");
+}
+async function openSqlite(file) {
+  try {
+    const bun = await import(sqliteSpecifier("bun"));
+    if (bun?.Database) return new bun.Database(file, { readonly: true });
+  } catch {
+  }
+  try {
+    const node = await import(sqliteSpecifier("node"));
+    if (node?.DatabaseSync) return new node.DatabaseSync(file, { readOnly: true });
+  } catch {
+  }
+  return null;
+}
+async function canUseSqlite() {
+  if (sqliteCapability !== null) return sqliteCapability;
+  const db = await openSqlite(":memory:");
+  if (db) {
+    try {
+      db.close?.();
+    } catch {
     }
-    if (c === ",") {
-      let j = i + 1;
-      while (j < out.length && /\s/.test(out[j])) j++;
-      if (out[j] === "}" || out[j] === "]") {
-        i++;
-        continue;
+    sqliteCapability = true;
+  } else {
+    sqliteCapability = false;
+  }
+  return sqliteCapability;
+}
+var cached = null;
+function blConfigPath() {
+  return path2.join(os2.homedir(), ".bailian", "config.json");
+}
+function settingsPath() {
+  return path2.join(stateRoot(), "settings.json");
+}
+function readSettings() {
+  for (const file of [settingsPath(), path2.join(legacyStateRoot(), "settings.json")]) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(file, "utf8"));
+      return { browser: typeof raw?.browser === "string" ? raw.browser : void 0, adapter: typeof raw?.adapter === "string" ? raw.adapter : void 0 };
+    } catch {
+    }
+  }
+  return {};
+}
+var ADAPTER_IDS = ["cdp-own-profile", "firefox-sqlite", "manual-paste", "bl"];
+function adapterForFamily(family) {
+  return family === "firefox" ? "firefox-sqlite" : "cdp-own-profile";
+}
+function pickPreferred(adapters, browsers, def) {
+  const s = readSettings();
+  if (s.adapter && ADAPTER_IDS.includes(s.adapter) && adapters.includes(s.adapter)) return s.adapter;
+  const wanted = browsers.find((b) => b.id === s.browser) ?? browsers.find((b) => b.id === def);
+  if (wanted) {
+    const a = adapterForFamily(wanted.family);
+    if (adapters.includes(a)) return a;
+  }
+  return adapters[0] ?? null;
+}
+function safeDefault(resolve2) {
+  try {
+    return resolve2();
+  } catch {
+    return null;
+  }
+}
+async function detect(refresh = false, resolveDefault = resolveDefaultBrowser) {
+  if (!refresh && cached) return cached;
+  const found = [];
+  for (const def2 of browserDefs()) {
+    const exe = firstExisting(def2.exe);
+    if (!exe) continue;
+    const userDataDir = def2.firefoxProfiles ? firstFirefoxProfile(def2.firefoxProfiles) : null;
+    found.push({ id: def2.id, label: def2.label, exe, userDataDir, family: def2.family });
+  }
+  const def = safeDefault(resolveDefault);
+  const browsers = def ? [...found.filter((b) => b.id === def), ...found.filter((b) => b.id !== def)] : found;
+  const canSqlite = await canUseSqlite();
+  const hasWebSocket = typeof globalThis.WebSocket === "function";
+  const adapters = [];
+  if (hasWebSocket && browsers.some((b) => b.family === "chromium")) adapters.push("cdp-own-profile");
+  if (canSqlite && browsers.some((b) => b.family === "firefox" && b.userDataDir)) adapters.push("firefox-sqlite");
+  adapters.push("manual-paste");
+  try {
+    if (fs.existsSync(blConfigPath())) adapters.push("bl");
+  } catch {
+  }
+  const preferred = pickPreferred(adapters, browsers, def);
+  cached = { browsers, adapters: preferred ? [preferred, ...adapters.filter((a) => a !== preferred)] : adapters, preferred, canUseSqlite: canSqlite };
+  return cached;
+}
+function sleepOrAbort(ms, signal) {
+  return new Promise((resolve2, reject) => {
+    const t = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve2();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(t);
+      reject(new Error("aborted"));
+    };
+    if (signal.aborted) {
+      clearTimeout(t);
+      reject(new Error("aborted"));
+      return;
+    }
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+function freePort() {
+  return new Promise((resolve2, reject) => {
+    const srv = net.createServer();
+    srv.once("error", reject);
+    srv.listen(0, "127.0.0.1", () => {
+      const addr = srv.address();
+      const port = typeof addr === "object" && addr ? addr.port : 0;
+      srv.close(() => port ? resolve2(port) : reject(new Error("no free port")));
+    });
+  });
+}
+function ownProfilesRoot() {
+  return path2.join(stateRoot(), "browsers");
+}
+function ownProfileDir(browserId) {
+  return path2.join(ownProfilesRoot(), browserId, "profile");
+}
+async function versionEndpoint(port, timeoutMs = 1e3) {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/json/version`, { signal: AbortSignal.timeout(timeoutMs) });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+async function cdpReady(port) {
+  const v = await versionEndpoint(port);
+  const ws = typeof v?.webSocketDebuggerUrl === "string" ? v.webSocketDebuggerUrl : "";
+  if (!ws) return false;
+  try {
+    return new URL(ws).port === String(port);
+  } catch {
+    return false;
+  }
+}
+async function launchChromium(browser, signal) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const port = await freePort();
+    const profile = ownProfileDir(browser.id);
+    const child = spawn(
+      browser.exe,
+      [`--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, "--no-first-run", "--no-default-browser-check", PAGE_URL],
+      { detached: false, stdio: "ignore", windowsHide: false }
+    );
+    const handle = { browserId: browser.id, pid: child.pid ?? -1, port, child };
+    const deadline = Date.now() + CDP_READY_MS;
+    while (Date.now() < deadline) {
+      if (child.exitCode !== null) break;
+      if (await cdpReady(port)) return handle;
+      try {
+        await sleepOrAbort(POLL_MS, signal);
+      } catch {
+        await closeChromium(handle);
+        throw new Error("aborted");
       }
     }
-    res += c;
-    i++;
+    await closeChromium(handle);
+    if (signal.aborted) throw new Error("aborted");
   }
-  return JSON.parse(res);
+  throw new Error("cdp-launch-failed");
 }
-var DEFAULT_CONFIG = {
-  // 0.1.3：仪表盘是主界面（桌面实证：无 TUI 渲染层，web 面板是唯一持久信息面）→ 默认开
-  webpanel: { enabled: true, port: 7777 },
-  sidebar: { order: 160, showNonTokenPlan: false },
-  toast: true,
-  refresh: { catalogMin: 10, quotaMin: 5 },
-  providerMatch: "family",
-  slash: false,
-  toastOnBoot: true,
-  dashboard: { autoOpen: false }
-};
-function loadConfig() {
-  const d = structuredClone(DEFAULT_CONFIG);
-  try {
-    const raw = parseJsonc(fs.readFileSync(configFilePath(), "utf8"));
-    if (raw && typeof raw === "object") {
-      if (raw.webpanel?.enabled !== void 0) d.webpanel.enabled = !!raw.webpanel.enabled;
-      if (Number.isInteger(raw.webpanel?.port) && raw.webpanel.port >= 1024 && raw.webpanel.port <= 65535) d.webpanel.port = raw.webpanel.port;
-      if (Number.isInteger(raw.sidebar?.order)) d.sidebar.order = raw.sidebar.order;
-      if (raw.sidebar?.showNonTokenPlan !== void 0) d.sidebar.showNonTokenPlan = !!raw.sidebar.showNonTokenPlan;
-      if (raw.toast !== void 0) d.toast = !!raw.toast;
-      if (Number.isInteger(raw.refresh?.catalogMin) && raw.refresh.catalogMin > 0) d.refresh.catalogMin = raw.refresh.catalogMin;
-      if (Number.isInteger(raw.refresh?.quotaMin) && raw.refresh.quotaMin > 0) d.refresh.quotaMin = raw.refresh.quotaMin;
-      if (isProviderMatchMode(raw.providerMatch)) d.providerMatch = raw.providerMatch;
-      if (raw.slash !== void 0) d.slash = !!raw.slash;
-      if (raw.toastOnBoot !== void 0) d.toastOnBoot = !!raw.toastOnBoot;
-      if (raw.dashboard?.autoOpen !== void 0) d.dashboard.autoOpen = !!raw.dashboard.autoOpen;
+function cdpCaller(wsUrl, signal, fn) {
+  return new Promise((resolve2, reject) => {
+    const WS = globalThis.WebSocket;
+    if (typeof WS !== "function") {
+      reject(new Error("WebSocket unavailable"));
+      return;
     }
-  } catch {
-  }
-  return d;
-}
-function readStatusFile(now = /* @__PURE__ */ new Date()) {
-  let text;
-  try {
-    text = fs.readFileSync(statusFilePath(), "utf8");
-  } catch {
-    return { kind: "missing" };
-  }
-  try {
-    const j = JSON.parse(text);
-    if (!j || j.schemaVersion !== 1 || !Array.isArray(j.windows)) return { kind: "corrupt", error: "schema" };
-    return isStale(j, now) ? { kind: "stale", status: j } : { kind: "live", status: j };
-  } catch (e) {
-    return { kind: "corrupt", error: String(e?.message || e) };
-  }
-}
-
-// src/tui/read-status.ts
-function recomputeWindows(status, now) {
-  return {
-    ...status,
-    windows: status.windows.map((w) => {
-      const ws = windowState(w, now);
-      return { ...w, activeNow: ws.active, boundaryKind: ws.boundaryKind, nextBoundaryAt: ws.nextBoundaryAt };
-    })
-  };
-}
-function embeddedSnapshotView(now = /* @__PURE__ */ new Date()) {
-  const status = buildStatus({ source: "snapshot", models: [], fetchedAt: "embedded" }, now);
-  return { status, degraded: true };
-}
-function loadStatusView(now = /* @__PURE__ */ new Date()) {
-  const r = readStatusFile(now);
-  switch (r.kind) {
-    case "live":
-      return { status: r.status, degraded: false };
-    case "stale":
-      return { status: recomputeWindows(r.status, now), degraded: true };
-    default:
-      return { status: recomputeWindows(embeddedSnapshotView(now).status, now), degraded: true };
-  }
-}
-
-// src/tui/index.tsx
-var PKG_ID = "@te-river/opencode-alibabatokenplan";
-var POLL_MS = 3e4;
-var EVENT_DEBOUNCE_MS = [150, 600];
-var getNow = () => Date.now();
-var stopSharedTicker = null;
-function h(type, props, ...children) {
-  const el = createElement(type);
-  for (const [k, v] of Object.entries(props ?? {})) {
-    if (k === "ref" && typeof v === "function") {
-      v(el);
-      continue;
-    }
-    if (typeof v === "function" && !k.startsWith("on")) {
-      effect((p) => {
-        setProp(el, k, v(), p);
-      });
-    } else {
-      setProp(el, k, v);
-    }
-  }
-  for (const c of children) insertChild(el, c);
-  return el;
-}
-function insertChild(parent, c) {
-  if (c === null || c === void 0 || c === false || c === "") return;
-  if (Array.isArray(c)) {
-    for (const x of c) insertChild(parent, x);
-    return;
-  }
-  insert(parent, c);
-}
-function line(text, style = {}) {
-  const props = { wrapMode: "word", ...style, content: text };
-  return h("text", props);
-}
-function providerBaseURL(api, id) {
-  try {
-    const p = api.state.provider?.find((x) => x?.id === id || x?.provider?.id === id);
-    return String(p?.options?.baseURL ?? p?.provider?.options?.baseURL ?? "");
-  } catch {
-    return "";
-  }
-}
-function sessionProviderID(api, sessionID) {
-  try {
-    const sess = api.state.session.get(sessionID);
-    const direct = sess?.data?.model?.providerID ?? sess?.model?.providerID ?? sess?.providerID;
-    if (typeof direct === "string" && direct) return direct;
-  } catch {
-  }
-  try {
-    const msgs = api.state.session.messages(sessionID) ?? [];
-    for (let i = msgs.length - 1; i >= 0; i--) {
-      const mi = msgs[i]?.info ?? msgs[i];
-      if (typeof mi?.providerID === "string" && mi.providerID) return mi.providerID;
-    }
-  } catch {
-  }
-  return void 0;
-}
-function sessionIsTokenPlan(api, sessionID, mode) {
-  const pid = sessionProviderID(api, sessionID);
-  if (matchProvider(pid, void 0, mode)) return true;
-  if (!pid) return false;
-  return matchProvider(pid, providerBaseURL(api, pid), mode);
-}
-function anyTokenPlanProvider(api, mode) {
-  try {
-    for (const p of api.state.provider ?? []) {
-      const id = p?.id ?? p?.provider?.id;
-      const base = p?.options?.baseURL ?? p?.provider?.options?.baseURL ?? "";
-      if (matchProvider(typeof id === "string" ? id : void 0, String(base), mode)) return true;
-    }
-  } catch {
-  }
-  return false;
-}
-function createViewState(api) {
-  const cfg = loadConfig();
-  const [view, setView] = createSignal(loadStatusView());
-  const refresh = () => {
-    try {
-      setView(loadStatusView());
-    } catch {
-    }
-  };
-  const timer = setInterval(refresh, POLL_MS);
-  timer.unref?.();
-  const offs = [];
-  let t1, t2;
-  const debounced = () => {
-    clearTimeout(t1);
-    clearTimeout(t2);
-    t1 = setTimeout(refresh, EVENT_DEBOUNCE_MS[0]);
-    t2 = setTimeout(refresh, EVENT_DEBOUNCE_MS[1]);
-  };
-  for (const ev of ["message.updated", "session.idle", "tui.session.select"]) {
-    try {
-      offs.push(api.event.on(ev, debounced));
-    } catch {
-    }
-  }
-  onCleanup(() => {
-    clearInterval(timer);
-    clearTimeout(t1);
-    clearTimeout(t2);
-    for (const off of offs) {
+    const ws = new WS(wsUrl);
+    const pending = /* @__PURE__ */ new Map();
+    let id = 0;
+    let settled = false;
+    const finish = (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal.removeEventListener("abort", onAbort);
       try {
-        off();
+        ws.close();
+      } catch {
+      }
+      if (err) reject(err);
+      else resolve2();
+    };
+    const timer = setTimeout(() => finish(new Error("devtools timeout")), 15e3);
+    const onAbort = () => finish(new Error("aborted"));
+    signal.addEventListener("abort", onAbort, { once: true });
+    const call = (method, params) => new Promise((res, rej) => {
+      const msgId = ++id;
+      pending.set(msgId, (msg) => msg?.error ? rej(new Error(String(msg.error?.message ?? "cdp error"))) : res(msg?.result));
+      try {
+        ws.send(JSON.stringify({ id: msgId, method, params }));
+      } catch (e) {
+        pending.delete(msgId);
+        rej(e);
+      }
+    });
+    ws.addEventListener("message", (ev) => {
+      let msg;
+      try {
+        msg = JSON.parse(typeof ev.data === "string" ? ev.data : String(ev.data));
+      } catch {
+        return;
+      }
+      const cb = msg?.id != null ? pending.get(msg.id) : void 0;
+      if (cb) {
+        pending.delete(msg.id);
+        cb(msg);
+      }
+    });
+    ws.addEventListener("error", () => finish(new Error("devtools error")));
+    ws.addEventListener("close", () => finish(new Error("devtools closed")));
+    ws.addEventListener("open", () => {
+      fn(call).then(() => finish()).catch(finish);
+    });
+  });
+}
+function buildCookieHeader(cookies) {
+  if (!Array.isArray(cookies)) return null;
+  const picked = cookies.filter((c) => typeof c?.name === "string" && typeof c?.value === "string").filter((c) => {
+    const raw = typeof c?.domain === "string" ? c.domain : typeof c?.host === "string" ? c.host : "";
+    const d = raw.replace(/^\./, "").toLowerCase();
+    return d === "aliyun.com" || d.endsWith(".aliyun.com");
+  });
+  if (!picked.length) return null;
+  return picked.map((c) => `${c.name}=${c.value}`).join("; ");
+}
+async function pageTarget(port) {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(1500) });
+    if (!res.ok) return null;
+    const list = await res.json();
+    if (!Array.isArray(list)) return null;
+    return list.find((t) => t?.type === "page" && typeof t.url === "string" && t.url.includes("bailian.console.aliyun.com")) ?? null;
+  } catch {
+    return null;
+  }
+}
+async function createPageTarget(port, signal) {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(PAGE_URL)}`, { method: "PUT", signal: AbortSignal.timeout(1500) });
+    if (res.ok) return await res.json();
+  } catch {
+  }
+  const v = await versionEndpoint(port);
+  const browserWs = typeof v?.webSocketDebuggerUrl === "string" ? v.webSocketDebuggerUrl : "";
+  if (!browserWs) return null;
+  let targetId = null;
+  try {
+    await cdpCaller(browserWs, signal, async (call) => {
+      const r = await call("Target.createTarget", { url: PAGE_URL });
+      targetId = typeof r?.targetId === "string" ? r.targetId : null;
+    });
+  } catch {
+    return null;
+  }
+  return targetId ? { webSocketDebuggerUrl: `ws://127.0.0.1:${port}/devtools/page/${targetId}` } : null;
+}
+async function readChromiumCookies(port, signal) {
+  const target = await pageTarget(port) ?? await createPageTarget(port, signal);
+  const wsUrl = typeof target?.webSocketDebuggerUrl === "string" ? target.webSocketDebuggerUrl : "";
+  if (!wsUrl) return null;
+  let cookies;
+  try {
+    await cdpCaller(wsUrl, signal, async (call) => {
+      await call("Network.enable");
+      const r = await call("Network.getCookies", { urls: ["https://bailian.console.aliyun.com/", "https://bailian-cs.console.aliyun.com/"] });
+      cookies = r?.cookies;
+    });
+  } catch {
+    return null;
+  }
+  return buildCookieHeader(cookies);
+}
+function waitExit(child, ms) {
+  if (child.exitCode !== null) return Promise.resolve(true);
+  return new Promise((resolve2) => {
+    const t = setTimeout(() => {
+      child.removeListener("exit", onExit);
+      resolve2(child.exitCode !== null);
+    }, ms);
+    const onExit = () => {
+      clearTimeout(t);
+      resolve2(true);
+    };
+    child.once("exit", onExit);
+  });
+}
+async function closeChromium(handle) {
+  if (!handle || handle.pid <= 0) return;
+  const { child, pid, port } = handle;
+  if (child.exitCode !== null) return;
+  try {
+    const v = await versionEndpoint(port);
+    const ws = typeof v?.webSocketDebuggerUrl === "string" ? v.webSocketDebuggerUrl : "";
+    if (ws) {
+      await cdpCaller(ws, new AbortController().signal, async (call) => {
+        await call("Browser.close");
+      }).catch(() => void 0);
+    }
+  } catch {
+  }
+  if (await waitExit(child, 2e3)) return;
+  try {
+    child.kill();
+  } catch {
+  }
+  if (await waitExit(child, 2e3)) return;
+  try {
+    if (process.platform === "win32") spawnSync2("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore", windowsHide: true });
+    else process.kill(pid, "SIGKILL");
+  } catch {
+  }
+}
+async function readFirefoxCookies(browser) {
+  const profile = browser.userDataDir;
+  if (!profile) return null;
+  const src = path2.join(profile, "cookies.sqlite");
+  let tmpDir = "";
+  try {
+    if (!fs.existsSync(src)) return null;
+    tmpDir = fs.mkdtempSync(path2.join(os2.tmpdir(), "atp-cookie-"));
+    for (const suffix of ["", "-wal", "-shm"]) {
+      const from = src + suffix;
+      if (fs.existsSync(from)) fs.copyFileSync(from, path2.join(tmpDir, `cookies.sqlite${suffix}`));
+    }
+    const db = await openSqlite(path2.join(tmpDir, "cookies.sqlite"));
+    if (!db) return null;
+    try {
+      const stmt = typeof db.prepare === "function" ? db.prepare("SELECT host, name, value FROM moz_cookies WHERE host LIKE '%aliyun.com'") : db.query("SELECT host, name, value FROM moz_cookies WHERE host LIKE '%aliyun.com'");
+      const rows = stmt.all?.() ?? [];
+      return buildCookieHeader(rows);
+    } finally {
+      try {
+        db.close();
       } catch {
       }
     }
-  });
-  return { get: view, refresh, cfg };
-}
-function wState(w, now) {
-  return windowState(w, new Date(now));
-}
-function currentWindow(st, now) {
-  return [...st.windows].sort((a, b) => {
-    const aa = wState(a, now).active ? 0 : 1, bb = wState(b, now).active ? 0 : 1;
-    if (aa !== bb) return aa - bb;
-    return new Date(a.nextBoundaryAt).getTime() - new Date(b.nextBoundaryAt).getTime();
-  })[0];
-}
-function sessionModelName(api, sessionID) {
-  try {
-    const sess = api.state.session.get(sessionID);
-    const m = sess?.data?.model?.modelID ?? sess?.model?.modelID ?? sess?.model?.id;
-    if (m) return canonicalize(String(m));
-    const msgs = api.state.session.messages(sessionID) ?? [];
-    for (let i = msgs.length - 1; i >= 0; i--) {
-      const mi = msgs[i]?.info ?? msgs[i];
-      if (mi?.modelID) return canonicalize(String(mi.modelID));
-    }
   } catch {
-  }
-  return void 0;
-}
-function strikethroughText(s) {
-  return s.replace(/[^\u0300-\u036f]/g, (c) => c + "\u0336");
-}
-function buildSidebar(api, vs, sessionID, collapsed, toggle) {
-  const theme = () => api.theme.current;
-  const now = getNow;
-  const header = h(
-    "box",
-    { style: { flexDirection: "row", gap: 1 }, onMouseUp: toggle },
-    line("Token Plan \u4F18\u60E0", { fg: () => theme().text }),
-    line(
-      () => vs.get().degraded ? `\u9759\u6001\u5FEB\u7167(\u622A\u81F3${QODER_SNAPSHOT_DATE})` : sourceBadgeLine(vs.get().status),
-      { fg: () => vs.get().degraded ? theme().textMuted : theme().success }
-    )
-  );
-  const body = h("box", { style: { flexDirection: "column" } });
-  insert(body, () => {
-    const sv = vs.get();
-    if (collapsed()) {
-      return line(() => "\u5DF2\u6298\u53E0 \xB7 /tokenplan \u67E5\u770B", { fg: theme().textMuted });
-    }
-    const s = sv.status;
-    const w = currentWindow(s, now());
-    if (!w) return line("\u6682\u65E0\u5DF2\u77E5\u4F18\u60E0\u7A97\u53E3", { fg: theme().textMuted });
-    const star = w.models[0];
-    const rows = [
-      line(() => `${wState(w, now()).active ? "\u25B8" : "\u25B9"} ${w.label} ${w.start}\u2013${w.end}${star?.effective ? " " + star.effective : ""}`, {
-        fg: () => wState(w, now()).active ? theme().success : theme().text
-      }),
-      line(() => `${fmtHMS(new Date(w.nextBoundaryAt).getTime() - now())} ${wState(w, now()).active ? "\u540E\u7ED3\u675F\xB7\u8FDB\u884C\u4E2D" : "\u540E\u5F00\u59CB"}`, {
-        fg: () => wState(w, now()).active ? theme().success : theme().warning
-      })
-    ];
-    const model = sessionModelName(api, sessionID);
-    if (model) {
-      const entry = s.discounts.find((d) => d.model === model);
-      const qf = QODER_INSALE_FACTORS[model];
-      const factorRules = (entry?.applies ?? []).filter(
-        (r) => r.unit === "credits-factor" && r.factor !== void 0 && (r.kind === "time-window" && r.window ? wState(r.window, now()).active : true)
-      );
-      const cur = factorRules[factorRules.length - 1];
-      const fStr = fmtFactor(cur?.factor ?? qf?.factor) ?? "\u2014";
-      const bStr = fmtFactor(cur?.baseFactor ?? qf?.factor);
-      const struck = bStr && bStr !== fStr ? strikethroughText(bStr) + " " : "";
-      rows.push(
-        line(
-          () => `\u5F53\u524D ${model} ${struck}${fmtFactor(cur?.factor ?? QODER_INSALE_FACTORS[model]?.factor)}${cur ? ` ${cur.label}${isCrossVerified(cur) ? " [\u53CC\u6E90\u5370\u8BC1]" : ""}` : " Credits\u500D\u7387"}`,
-          { fg: () => theme().accent }
-        )
-      );
-    }
-    for (const o of s.windows.filter((x) => x.id !== w.id).slice(0, 2)) {
-      rows.push(
-        line(() => {
-          const ws = wState(o, now());
-          return `${o.label} \xB7 ${ws.active ? "\u5269" : "\u8DDD"} ${fmtShortDur(new Date(o.nextBoundaryAt).getTime() - now())}${ws.active ? "\u7ED3\u675F" : "\u5F00\u59CB"}`;
-        }, { fg: () => theme().textMuted })
-      );
-    }
-    if (sv.degraded) rows.push(line(`\u5FEB\u7167\u53EF\u80FD\u5931\u6548 \xB7 \u6570\u636E\u622A\u81F3 ${QODER_SNAPSHOT_DATE}`, { fg: () => theme().warning }));
-    return h("box", { style: { flexDirection: "column" } }, ...rows.slice(0, 6));
-  });
-  return h("box", { style: { flexDirection: "column" } }, header, body);
-}
-var TABS = [
-  { key: "windows", title: "\u7A97\u53E3\u5012\u8BA1\u65F6", desc: "\u5404\u4F18\u60E0\u7A97\u53E3\u4E0E\u4E0B\u4E00\u8FB9\u754C\uFF08\u6BCF\u79D2\u8D70\u5B57\uFF09" },
-  { key: "models", title: "\u6A21\u578B\u500D\u7387", desc: "\u767E\u70BC\u76EE\u5F55\u4EF7 + Qoder \u5728\u5356\u500D\u7387" },
-  { key: "limited", title: "\u9650\u65F6\u4F18\u60E0", desc: "flat-cut \u660E\u7EC6\uFF08\u4E24\u5355\u4F4D\u4E0D\u4E92\u7B97\uFF09" },
-  { key: "free", title: "\u514D\u8D39\u6D3B\u52A8", desc: "free-calls / policy \u4E0E\u65F6\u6548\u58F0\u660E" },
-  { key: "about", title: "\u53E3\u5F84\u8BF4\u660E", desc: "\u6570\u636E\u6E90\u3001\u6C47\u7387\u3001\u5FEB\u7167\u7EA2\u7EBF" }
-];
-function openMainDialog(api, vs) {
-  try {
-    api.ui.dialog.replace(
-      () => createComponent(api.ui.DialogSelect, {
-        title: `Token Plan \u4F18\u60E0\uFF08Qoder \u5FEB\u7167\u622A\u81F3 ${QODER_SNAPSHOT_DATE}\uFF09`,
-        options: TABS.map((t) => ({ title: t.title, value: t.key, description: t.desc })),
-        current: (() => {
-          try {
-            return api.kv.get("atp.lastDialogTab", "windows");
-          } catch {
-            return "windows";
-          }
-        })(),
-        onSelect: (opt) => {
-          try {
-            api.kv.set("atp.lastDialogTab", opt.value);
-          } catch {
-          }
-          openTabDialog(api, vs, String(opt.value));
-        }
-      })
-    );
-    api.ui.dialog.setSize("medium");
-  } catch {
-    try {
-      api.ui.toast({ variant: "error", message: "Token Plan \u9762\u677F\u6253\u5F00\u5931\u8D25" });
-    } catch {
+    return null;
+  } finally {
+    if (tmpDir) {
+      try {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      } catch {
+      }
     }
   }
 }
-function openTabDialog(api, vs, tab) {
-  const theme = () => api.theme.current;
-  const now = getNow;
-  const rowsFor = () => {
-    const s = vs.get().status;
-    const tt = now();
-    switch (tab) {
-      case "windows":
-        return s.windows.flatMap((w) => {
-          const ws = wState(w, tt);
-          const head = `${w.label} [${w.start}\u2013${w.end}] ${ws.active ? "\u8FDB\u884C\u4E2D" : "\u672A\u5F00\u59CB"} \xB7 ${ws.active ? "\u8DDD\u7ED3\u675F" : "\u8DDD\u5F00\u59CB"} ${fmtHMS(new Date(w.nextBoundaryAt).getTime() - tt)}`;
-          const rows = w.models.map(
-            (m) => `  ${m.model} ${m.regular && m.regular !== m.effective ? strikethroughText(m.regular) + " " : ""}${m.effective ?? ""} ${m.badge ?? ""}${isCrossVerified(m) ? " [\u53CC\u6E90\u5370\u8BC1]" : ""}`
-          );
-          return [head, ...rows];
-        });
-      case "models":
-        return [
-          "\u2014 \u767E\u70BC\u76EE\u5F55\uFF08Credits/\u767E\u4E07tok\uFF09\u2014",
-          ...s.textModels.map((m) => `${m.model} \u8F93\u5165 ${m.input} \u7F13\u5B58 ${m.cache} \u8F93\u51FA ${m.output}${m.bands ? `\uFF08${m.bands}\uFF09` : ""}${m.creditsFactor ? ` \xB7 Qoder ${m.creditsFactor}` : ""}${m.badge ? ` \xB7 ${m.badge.label}` : ""}`),
-          "\u2014 Qoder \u5728\u5356\u500D\u7387\uFF08\u5FEB\u7167\uFF0C\u975E\u4F18\u60E0\uFF09\u2014",
-          ...Object.entries(QODER_INSALE_FACTORS).map(([k, v]) => `${k} ${fmtFactor(v.factor)}${v.note ? ` (${v.note})` : ""}`)
-        ];
-      case "limited":
-        return s.offers.filter((r) => r.kind === "flat-cut").flatMap((r) => [
-          `${r.models.join(", ")} \xD7${r.factor ?? "-"}\uFF08${r.unit === "credits-factor" ? "Qoder Credits" : "\u767E\u70BC \xA5"}\uFF09${r.batchStack !== void 0 ? ` Batch\u53E0\u52A0\xD7${r.batchStack}` : ""}`,
-          ...r.note ? ["  " + r.note] : []
-        ]);
-      case "free":
-        return s.notices.map((n) => `[${n.kind}] ${n.text}${n.expired ? "\uFF08\u5DF2\u8FC7\u671F\uFF0C\u5FEB\u7167\u53EF\u80FD\u5931\u6548\uFF09" : ""} \xB7 ${n.source}`);
-      default:
-        return [
-          `\u767E\u70BC\u76EE\u5F55\u6E90: ${s.sources.catalog}\uFF08live\u2192cli\u2192snapshot \u4E09\u7EA7\u56DE\u9000\uFF09`,
-          `Qoder \u5FEB\u7167: ${s.sources.qoderSnapshot}\uFF08\u9759\u6001\uFF0C\u4E0D\u8C03\u7528\u4EFB\u4F55 Qoder \u79C1\u6709\u7AEF\u70B9\uFF09`,
-          `\u6362\u7B97\u6CE8\u8BB0: 1 \u5143 = ${s.creditsPerYuan} Credits\uFF08${s.creditsRateNote}\uFF09`,
-          "\u4E24\u5957\u5355\u4F4D\u6C38\u4E0D\u4E92\u7B97\uFF1ACredits \u500D\u7387\u4E0E \xA5 \u4EF7\u683C\u500D\u7387\u5404\u5C45\u5176 facet",
-          "\u6298\u540E\u6D88\u8017\u663E\u793A\u300C\u6D88\u8017/Cost\uFF0C\u5355\u4F4D Credit\u300D\uFF1BruntimeConfig \u4F1A\u53D8\u5B9E\u9645\u6D88\u8017",
-          s.quota.available ? `\u989D\u5EA6: \u5B9E\u65F6\uFF08${s.quota.checkedAt}\uFF09` : `\u989D\u5EA6: ${s.quota.hint ?? "\u4E0D\u53EF\u7528"}`
-        ];
-    }
-  };
-  try {
-    api.ui.dialog.replace(() => {
-      const scroll = h("scrollbox", { style: { flexGrow: 1, flexDirection: "column" } });
-      insert(scroll, () => {
-        const container = h("box", { style: { flexDirection: "column" } });
-        for (const r of rowsFor()) insertChild(container, line(r));
-        return container;
-      });
-      return h(
-        "box",
-        { style: { flexDirection: "column", height: "100%" } },
-        line(`${TABS.find((x) => x.key === tab)?.title ?? tab} \xB7 \u6570\u636E\u622A\u81F3 ${QODER_SNAPSHOT_DATE} \xB7 esc \u5173\u95ED`, { fg: () => theme().textMuted }),
-        scroll
-      );
+
+// src/core/quota/credentials.ts
+var TARGET_WINDOW_MS = 18e4;
+var HTTP_TIMEOUT_MS = 3e4;
+var COOKIE_POLL_MS = 2e3;
+var cred = null;
+var state = "none";
+var storage = "none";
+var fail = (kind, message) => ({ ok: false, kind, message: redact(message).slice(0, 120) });
+function credentialRoot() {
+  return stateRoot();
+}
+function credentialFilePath() {
+  return path3.join(credentialRoot(), "credential.json");
+}
+function legacyCredentialFilePath() {
+  return path3.join(legacyStateRoot(), "credential.json");
+}
+var PS_PROTECT = "Add-Type -AssemblyName System.Security; [Convert]::ToBase64String([Security.Cryptography.ProtectedData]::Protect([Text.Encoding]::UTF8.GetBytes($env:ATP_SECRET),$null,'CurrentUser'))";
+var PS_UNPROTECT = "Add-Type -AssemblyName System.Security; [Text.Encoding]::UTF8.GetString([Security.Cryptography.ProtectedData]::Unprotect([Convert]::FromBase64String($env:ATP_SECRET),$null,'CurrentUser'))";
+function powershellExe() {
+  const root = process.env.SystemRoot ?? process.env.windir;
+  const abs = root ? path3.join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe") : "";
+  return abs && fs2.existsSync(abs) ? abs : "powershell.exe";
+}
+function runPowerShell(script, secret) {
+  return new Promise((resolve2) => {
+    const child = spawn2(powershellExe(), ["-NoProfile", "-NonInteractive", "-Command", script], {
+      env: { ...process.env, ATP_SECRET: secret },
+      stdio: ["ignore", "pipe", "ignore"],
+      windowsHide: true
     });
-    api.ui.dialog.setSize("large");
+    let out = "";
+    const timer = setTimeout(() => {
+      child.kill();
+      resolve2(null);
+    }, 8e3);
+    child.stdout?.on("data", (d) => out += String(d));
+    child.once("error", () => {
+      clearTimeout(timer);
+      resolve2(null);
+    });
+    child.once("close", (code) => {
+      clearTimeout(timer);
+      const text = out.trim();
+      resolve2(code === 0 && text ? text : null);
+    });
+  });
+}
+async function persist() {
+  if (!cred || process.platform !== "win32") {
+    storage = "session";
+    return storage;
+  }
+  const blob = await runPowerShell(PS_PROTECT, JSON.stringify({ v: 1, ...cred }));
+  if (!blob) {
+    storage = "session";
+    return storage;
+  }
+  try {
+    const file = credentialFilePath();
+    fs2.mkdirSync(path3.dirname(file), { recursive: true });
+    fs2.writeFileSync(file, JSON.stringify({ schemaVersion: 1, prot: "dpapi", savedAt: (/* @__PURE__ */ new Date()).toISOString(), data: blob }));
+    storage = "dpapi";
+    return storage;
   } catch {
+    storage = "session";
+    return storage;
+  }
+}
+async function restoreFromDisk() {
+  if (process.platform !== "win32") return null;
+  let blob = null;
+  for (const file of [credentialFilePath(), legacyCredentialFilePath()]) {
     try {
-      api.ui.toast({ variant: "error", message: "Token Plan \u660E\u7EC6\u6253\u5F00\u5931\u8D25" });
+      const raw = JSON.parse(fs2.readFileSync(file, "utf8"));
+      if (raw?.schemaVersion !== 1 || raw?.prot !== "dpapi" || typeof raw?.data !== "string") continue;
+      blob = raw.data;
+      break;
+    } catch {
+    }
+  }
+  if (!blob) return null;
+  const plain = await runPowerShell(PS_UNPROTECT, blob);
+  if (!plain) return null;
+  try {
+    const parsed = JSON.parse(plain);
+    if (parsed?.kind === "cookie" && typeof parsed.jar === "string" && parsed.jar) {
+      storage = "dpapi";
+      return { kind: "cookie", jar: parsed.jar, source: parsed.source ?? "browser-session" };
+    }
+    if (parsed?.kind === "bearer" && typeof parsed.token === "string" && parsed.token) {
+      storage = "dpapi";
+      return { kind: "bearer", token: parsed.token, source: "bl" };
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+function readBlToken() {
+  try {
+    const cfg = JSON.parse(fs2.readFileSync(blConfigPath(), "utf8"));
+    const token = cfg?.console?.access_token ?? cfg?.access_token ?? cfg?.tokens?.console?.access_token;
+    return typeof token === "string" && token ? { kind: "bearer", token, source: "bl" } : null;
+  } catch {
+    return null;
+  }
+}
+function linkAbort(signal, ms) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(new DOMException("timeout", "TimeoutError")), ms);
+  const onAbort = () => ctrl.abort(signal.reason);
+  if (signal.aborted) ctrl.abort(signal.reason);
+  else signal.addEventListener("abort", onAbort, { once: true });
+  return {
+    signal: ctrl.signal,
+    done: () => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", onAbort);
+    }
+  };
+}
+function secToken() {
+  const v = process.env.ALIYUN_SEC_TOKEN?.trim();
+  return v ? v : void 0;
+}
+async function postWith(c, api, data, signal) {
+  const headers = baseHeaders();
+  if (c.kind === "bearer") headers.Authorization = `Bearer ${c.token}`;
+  else headers.Cookie = c.jar;
+  const link = linkAbort(signal, HTTP_TIMEOUT_MS);
+  try {
+    const res = await fetch(buildGatewayUrl(api, c.kind === "bearer" ? "cli" : "data"), {
+      method: "POST",
+      headers,
+      body: buildRequestBody(api, data, secToken()),
+      signal: link.signal
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new GatewayError(`HTTP ${res.status}: ${body.slice(0, 500)}`, String(res.status));
+    }
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new GatewayError(`not JSON: ${text.slice(0, 200)}`, "not-json");
+    }
+  } finally {
+    link.done();
+  }
+}
+async function probeWith(c, signal) {
+  try {
+    unwrap(await postWith(c, API.subscription, { queryInstanceInfoRequest: { commodityCode: COMMODITY.solo } }, signal));
+    return { ok: true };
+  } catch (e) {
+    const err = classifyError(e);
+    return { ok: false, kind: err.kind, message: err.message };
+  }
+}
+function invalidatePersisted() {
+  storage = "none";
+}
+async function consoleRequest(api, data, signal, deps = {}) {
+  if (!cred) await probeCredential(deps);
+  const c = cred;
+  if (!c) throw new GatewayError("\u672A\u6388\u6743 \xB7 \u6253\u5F00 /tokenplan \u6388\u6743", "NO_CREDENTIAL");
+  try {
+    const payload = deps.request ? await deps.request(api, data, signal) : await postWith(c, api, data, signal);
+    unwrap(payload);
+    return payload;
+  } catch (e) {
+    if (classifyError(e).kind === "unauthorized") {
+      cred = null;
+      state = "expired";
+      (deps.invalidate ?? invalidatePersisted)();
+    }
+    throw e;
+  }
+}
+async function probeCredential(deps = {}) {
+  if (cred) {
+    state = "authorized";
+    return state;
+  }
+  if (state === "expired") return state;
+  cred = await (deps.restore ?? restoreFromDisk)() ?? readBlToken();
+  state = cred ? "authorized" : "none";
+  return state;
+}
+function credentialSource() {
+  return cred?.source ?? null;
+}
+async function forgetCredential() {
+  cred = null;
+  state = "none";
+  storage = "none";
+  for (const file of [credentialFilePath(), legacyCredentialFilePath()]) {
+    try {
+      fs2.rmSync(file, { force: true });
+    } catch {
+    }
+  }
+  for (const dir of [ownProfilesRoot(), path3.join(legacyStateRoot(), "browsers")]) {
+    try {
+      fs2.rmSync(dir, { recursive: true, force: true });
     } catch {
     }
   }
 }
-var tui = async (api, options, _meta) => {
-  const g = globalThis;
-  if (g.__atpTuiLoaded) return;
-  g.__atpTuiLoaded = true;
-  const [nowSig, setNowSig] = createSignal(Date.now());
-  getNow = nowSig;
-  const sharedTick = setInterval(() => setNowSig(Date.now()), 1e3);
-  sharedTick.unref?.();
-  let stopped = false;
-  stopSharedTicker = () => {
-    if (stopped) return;
-    stopped = true;
-    clearInterval(sharedTick);
-  };
-  try {
-    onCleanup(stopSharedTicker);
-  } catch {
-  }
-  const stopTicker = stopSharedTicker;
-  const vs = createViewState(api);
-  let cfg = vs.cfg;
-  try {
-    const extra = typeof options === "string" ? void 0 : options;
-    if (extra && typeof extra === "object") {
-      for (const k of ["sidebar", "webpanel", "toast", "refresh", "providerMatch"]) {
-        const v = extra[k];
-        if (v === void 0) continue;
-        if (k === "providerMatch") {
-          if (isProviderMatchMode(v)) cfg[k] = v;
-        } else if (typeof v !== "object" || v === null) cfg[k] = v;
-        else Object.assign(cfg[k] ?? {}, v);
+async function detectCredentialAdapters(resolveDefault) {
+  const { browsers, adapters, preferred } = await detect(true, resolveDefault);
+  return { browsers, adapters, preferred };
+}
+async function login(opts) {
+  const { signal, onProgress: progress } = opts;
+  const detected = await detect(true);
+  const order = opts.adapters?.length ? opts.adapters.filter((a) => detected.adapters.includes(a)) : detected.adapters;
+  const chromium = detected.browsers.filter((b) => b.family === "chromium");
+  state = "awaiting-login";
+  for (const adapter of order) {
+    if (signal.aborted) return fail("none", "\u5DF2\u53D6\u6D88\u6388\u6743");
+    if (adapter === "bl") {
+      const c = readBlToken();
+      if (!c) continue;
+      const r = await probeWith(c, signal);
+      if (r.ok) {
+        cred = c;
+        state = "authorized";
+        return { ok: true, storage: await persist() };
       }
+      continue;
     }
-  } catch {
-  }
-  const collapsed = () => {
-    try {
-      return !!api.kv.get("atp.collapsed", false);
-    } catch {
-      return false;
-    }
-  };
-  const toggleCollapsed = () => {
-    try {
-      api.kv.set("atp.collapsed", !collapsed());
-    } catch {
-    }
-  };
-  api.slots.register({
-    order: cfg.sidebar.order,
-    slots: {
-      sidebar_content(_ctx, props) {
-        const sid = String(props?.session_id ?? "");
-        if (!sid) return null;
-        const tp = sessionIsTokenPlan(api, sid, cfg.providerMatch);
-        if (!tp && !cfg.sidebar.showNonTokenPlan) return null;
-        if (!tp) {
-          return line(() => {
-            const w = currentWindow(vs.get().status, Date.now());
-            return w ? `Token Plan: ${w.label} ${wState(w, Date.now()).active ? "\u8FDB\u884C\u4E2D" : w.start + " \u5F00\u59CB"}` : "Token Plan: \u65E0\u5DF2\u77E5\u7A97\u53E3";
-          }, { fg: () => api.theme.current.textMuted });
+    if (adapter === "firefox-sqlite") {
+      for (const b of detected.browsers.filter((x) => x.family === "firefox")) {
+        progress({ phase: "verifying", secondsLeft: 0 });
+        const jar = await readFirefoxCookies(b);
+        if (!jar) continue;
+        const c = { kind: "cookie", jar, source: "firefox" };
+        if ((await probeWith(c, signal)).ok) {
+          cred = c;
+          state = "authorized";
+          return { ok: true, storage: await persist() };
         }
-        return buildSidebar(api, vs, sid, collapsed, toggleCollapsed);
-      },
-      home_bottom() {
-        if (!anyTokenPlanProvider(api, cfg.providerMatch)) return null;
-        return line(() => homeSummaryLine(vs.get().status, new Date(getNow())), { fg: () => api.theme.current.textMuted });
+      }
+      continue;
+    }
+    if (adapter === "manual-paste") {
+      state = "manual-needed";
+      return fail("browser-unavailable", "\u65E0\u6CD5\u81EA\u52A8\u8BFB\u53D6\u767B\u5F55\u6001 \xB7 \u8BF7\u5728 /tokenplan \u7C98\u8D34 Cookie");
+    }
+    for (const browser of chromium) {
+      if (signal.aborted) return fail("none", "\u5DF2\u53D6\u6D88\u6388\u6743");
+      progress({ phase: "launching", secondsLeft: Math.round(TARGET_WINDOW_MS / 1e3) });
+      let handle = null;
+      try {
+        handle = await launchChromium(browser, signal);
+        progress({ phase: "waiting-login", secondsLeft: Math.round(TARGET_WINDOW_MS / 1e3) });
+        const result = await waitForLogin(handle, signal, progress);
+        if (result) {
+          cred = result;
+          state = "authorized";
+          return { ok: true, storage: await persist() };
+        }
+      } catch {
+        if (signal.aborted) return fail("none", "\u5DF2\u53D6\u6D88\u6388\u6743");
+      } finally {
+        progress({ phase: "closing", secondsLeft: 0 });
+        await closeChromium(handle);
       }
     }
-  });
-  const dispose = api.keymap.registerLayer({
-    commands: [{
-      namespace: "palette",
-      name: "tokenplan.main",
-      title: "Token Plan \u4F18\u60E0\u603B\u89C8",
-      desc: `\u767E\u70BC+Qoder \u5FEB\u7167\u4F18\u60E0\u7A97\u53E3/\u500D\u7387/\u5012\u8BA1\u65F6\uFF08\u6570\u636E\u622A\u81F3 ${QODER_SNAPSHOT_DATE}\uFF09`,
-      category: "Token Plan",
-      slashName: "tokenplan",
-      run: () => {
-        vs.refresh();
-        openMainDialog(api, vs);
-      }
-    }],
-    bindings: []
-  });
-  api.lifecycle.onDispose(() => {
+  }
+  state = "manual-needed";
+  return fail("browser-unavailable", "\u65E0\u6CD5\u81EA\u52A8\u8BFB\u53D6\u767B\u5F55\u6001 \xB7 \u8BF7\u5728 /tokenplan \u7C98\u8D34 Cookie");
+}
+async function waitForLogin(handle, signal, progress) {
+  const deadline = Date.now() + TARGET_WINDOW_MS;
+  let lastJar = "";
+  while (Date.now() < deadline) {
+    if (signal.aborted) return null;
+    progress({ phase: "waiting-login", secondsLeft: Math.ceil((deadline - Date.now()) / 1e3) });
     try {
-      stopTicker();
+      await sleepOrAbort(COOKIE_POLL_MS, signal);
     } catch {
+      return null;
     }
-    try {
-      dispose();
-    } catch {
-    }
-  });
+    const jar = await readChromiumCookies(handle.port, signal);
+    if (!jar || jar === lastJar) continue;
+    lastJar = jar;
+    progress({ phase: "verifying", secondsLeft: Math.ceil((deadline - Date.now()) / 1e3) });
+    const c = { kind: "cookie", jar, source: "browser-session" };
+    if ((await probeWith(c, signal)).ok) return c;
+  }
+  return null;
+}
+async function submitManualCookie(raw, signal) {
+  const jar = normalizeCookieInput(raw);
+  if (!jar) return fail("paste-invalid", "Cookie \u65E0\u6548\u6216\u5DF2\u8FC7\u671F \xB7 \u8BF7\u91CD\u65B0\u590D\u5236");
+  const c = { kind: "cookie", jar, source: "manual" };
+  const r = await probeWith(c, signal);
+  if (!r.ok) return fail("paste-invalid", "Cookie \u65E0\u6548\u6216\u5DF2\u8FC7\u671F \xB7 \u8BF7\u91CD\u65B0\u590D\u5236");
+  cred = c;
+  state = "authorized";
+  return { ok: true, storage: await persist() };
+}
+function normalizeCookieInput(raw) {
+  if (typeof raw !== "string") return null;
+  let s = raw.trim();
+  if (!s || /[\r\n]/.test(s)) return null;
+  s = s.replace(/^cookie\s*:\s*/i, "");
+  const pairs = s.match(/[^=;\s]+=[^;]*/g) ?? [];
+  const usable = pairs.filter((p) => p.slice(p.indexOf("=") + 1).trim().length > 0);
+  return usable.length >= 2 ? usable.map((p) => p.trim()).join("; ") : null;
+}
+
+// src/core/quota/fetch.ts
+var NO_CRED_MESSAGE = {
+  none: "\u672A\u6388\u6743 \xB7 \u6253\u5F00 /tokenplan \u2192 \u6388\u6743\uFF08\u6D4F\u89C8\u5668\u767B\u4E00\u6B21\u5373\u5B8C\u6210\uFF09",
+  "browser-unavailable": "\u65E0\u6CD5\u81EA\u52A8\u8BFB\u53D6\u767B\u5F55\u6001 \xB7 \u8BF7\u5728 /tokenplan \u7C98\u8D34 Cookie",
+  unauthorized: "\u767B\u5F55\u5DF2\u8FC7\u671F \xB7 \u5728 /tokenplan \u91CD\u65B0\u6388\u6743"
 };
-var index_default = { id: PKG_ID, tui };
-var AliBabaTokenPlanTui = tui;
+function failed(fetchedAt, error) {
+  return { ok: false, source: null, fetchedAt, plan: null, window: null, addon: null, qwenwork: null, error };
+}
+function degrade(res, normalize) {
+  if (res.status === "rejected") return { error: classifyError(res.reason).message };
+  try {
+    return normalize(unwrap(res.value));
+  } catch (e) {
+    return { error: classifyError(e).message };
+  }
+}
+async function fetchQuota(opts = {}) {
+  const deps = opts.deps ?? {};
+  const signal = opts.signal ?? new AbortController().signal;
+  const fetchedAt = (deps.now ?? (() => /* @__PURE__ */ new Date()))().toISOString();
+  const request = deps.request ?? consoleRequest;
+  let state2;
+  try {
+    state2 = await (deps.credentialState ?? probeCredential)();
+  } catch {
+    state2 = "none";
+  }
+  if (state2 !== "authorized") {
+    const kind = state2 === "manual-needed" ? "browser-unavailable" : state2 === "expired" ? "unauthorized" : "none";
+    return failed(fetchedAt, { kind, message: NO_CRED_MESSAGE[kind] ?? NO_CRED_MESSAGE.none });
+  }
+  const source = () => deps.source?.() ?? credentialSource();
+  try {
+    const plan = normalizePlan(unwrap(await request(API.subscription, { queryInstanceInfoRequest: { commodityCode: COMMODITY.solo } }, signal)));
+    const window = pickUsageWindow(unwrap(await request(API.usage, {}, signal)));
+    const [addonRes, qwenRes] = await Promise.allSettled([
+      request(API.addon, { commodityCode: COMMODITY.addon }, signal),
+      request(API.qwenwork, {}, signal)
+    ]);
+    const addon = degrade(addonRes, normalizeAddon);
+    const qwenwork = degrade(qwenRes, normalizeQwenwork);
+    return { ok: true, source: source(), fetchedAt, plan, window, addon, qwenwork, error: null };
+  } catch (e) {
+    return failed(fetchedAt, classifyError(e));
+  }
+}
+
+// src/core/quota-cache.ts
+import * as fs3 from "node:fs";
+import * as path4 from "node:path";
+var QUOTA_CACHE_SCHEMA = 2;
+var QUOTA_CACHE_CAP = 64 * 1024;
+function quotaCachePath() {
+  return path4.join(stateDir(), "quota-cache.json");
+}
+function projectQuota(s) {
+  const addon = s.addon && "error" in s.addon ? { error: String(s.addon.error) } : s.addon ?? null;
+  const qwenwork = s.qwenwork && "error" in s.qwenwork ? { error: String(s.qwenwork.error) } : s.qwenwork ?? null;
+  return {
+    ok: !!s.ok,
+    source: s.source ?? null,
+    fetchedAt: String(s.fetchedAt ?? ""),
+    plan: s.plan ? {
+      status: s.plan.status ?? null,
+      specCode: s.plan.specCode ?? null,
+      remainingDays: s.plan.remainingDays ?? null,
+      endTime: s.plan.endTime ?? null,
+      endAtMs: s.plan.endAtMs ?? null
+    } : null,
+    window: s.window ? {
+      window: s.window.window,
+      usedPercent: s.window.usedPercent,
+      remainingPercent: s.window.remainingPercent,
+      resetTime: s.window.resetTime ?? null,
+      resetAtMs: s.window.resetAtMs ?? null
+    } : null,
+    addon,
+    qwenwork,
+    error: s.error ? { kind: s.error.kind, message: String(s.error.message) } : null
+  };
+}
+async function writeQuotaCache(snap) {
+  try {
+    const dir = stateDir();
+    await fs3.promises.mkdir(dir, { recursive: true });
+    const payload = JSON.stringify({
+      schemaVersion: QUOTA_CACHE_SCHEMA,
+      writtenBy: "@te-river/opencode-alibabatokenplan/tui@0.2.0",
+      fetchedAt: snap.fetchedAt,
+      quota: projectQuota(snap)
+    });
+    if (Buffer.byteLength(payload, "utf8") > QUOTA_CACHE_CAP) return false;
+    const tmp = path4.join(dir, "quota-cache.json.tmp");
+    await fs3.promises.writeFile(tmp, payload);
+    await fs3.promises.rename(tmp, quotaCachePath());
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function readQuotaCache() {
+  let parsed;
+  try {
+    parsed = JSON.parse(await fs3.promises.readFile(quotaCachePath(), "utf8"));
+  } catch {
+    return null;
+  }
+  if (!parsed || parsed.schemaVersion !== QUOTA_CACHE_SCHEMA || !parsed.quota || typeof parsed.quota !== "object") return null;
+  return { ...projectQuota(parsed.quota), source: "cache" };
+}
+
+// src/core/usage-series.ts
+var DAY_MS = 24 * 60 * 60 * 1e3;
+var DAY_SECONDS = 86400;
+var HOUR_SECONDS = 3600;
+var WEEK_DAYS = 7;
+var FIVE_HOUR_POINTS = 5;
+var SHANGHAI_OFFSET_MS = 8 * 60 * 60 * 1e3;
+function shanghaiParts(ms) {
+  const shifted = new Date(ms + SHANGHAI_OFFSET_MS);
+  return {
+    y: shifted.getUTCFullYear(),
+    m: shifted.getUTCMonth(),
+    d: shifted.getUTCDate(),
+    h: shifted.getUTCHours(),
+    mi: shifted.getUTCMinutes(),
+    s: shifted.getUTCSeconds()
+  };
+}
+function shiftMonth(ms, delta) {
+  const p = shanghaiParts(ms);
+  const firstOfTarget = new Date(Date.UTC(p.y, p.m + delta, 1, p.h, p.mi, p.s));
+  const year = firstOfTarget.getUTCFullYear();
+  const month = firstOfTarget.getUTCMonth();
+  const daysInTarget = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  return Date.UTC(year, month, Math.min(p.d, daysInTarget), p.h, p.mi, p.s) - SHANGHAI_OFFSET_MS;
+}
+function monthStartOf(resetAtMs) {
+  if (typeof resetAtMs !== "number" || !Number.isFinite(resetAtMs)) return null;
+  return shiftMonth(resetAtMs, -1);
+}
+function originSeries(raw) {
+  let node = raw;
+  for (let depth = 0; depth < 3 && node && typeof node === "object"; depth += 1) {
+    const current = node;
+    if (Array.isArray(current.originData)) return current.originData;
+    node = current.data;
+  }
+  return null;
+}
+function totalTokenPoints(series) {
+  for (const entry of series) {
+    const item = entry;
+    if (item?.labels?.usage_type !== "total_tokens" || !Array.isArray(item.points)) continue;
+    return item.points.filter((point) => {
+      const p = point;
+      return typeof p?.value === "number" && Number.isFinite(p.value) && typeof p?.timestamp === "number" && Number.isFinite(p.timestamp);
+    }).map((point) => ({ at: point.timestamp, value: point.value })).sort((a, b) => a.at - b.at);
+  }
+  return null;
+}
+var sum = (points) => points.reduce((total, point) => total + point.value, 0);
+async function fetchPoints(request, dto, signal) {
+  try {
+    const payload = await request(API.modelMonitor, { reqDTO: dto }, signal);
+    const series = originSeries(unwrap(payload));
+    return series ? totalTokenPoints(series) : null;
+  } catch {
+    return null;
+  }
+}
+var monitorDto = (startTime, endTime, step) => ({
+  productMode: "TokenPlanPersonal",
+  startTime,
+  endTime,
+  step,
+  metricFilters: [{ aggMethod: "sum", metricName: "model_usage" }]
+});
+async function fetchUsageSeries(opts = {}) {
+  const now = opts.now ?? Date.now();
+  const signal = opts.signal ?? new AbortController().signal;
+  const request = opts.requestImpl ?? consoleRequest;
+  const monthStart = monthStartOf(opts.resetAtMs);
+  const hasMonth = monthStart !== null && monthStart < now;
+  const [dailyRes, hourlyRes] = await Promise.allSettled([
+    fetchPoints(request, monitorDto(hasMonth ? monthStart : now - WEEK_DAYS * DAY_MS, now, DAY_SECONDS), signal),
+    fetchPoints(request, monitorDto(now - WEEK_DAYS * DAY_MS, now, HOUR_SECONDS), signal)
+  ]);
+  const daily = dailyRes.status === "fulfilled" ? dailyRes.value : null;
+  let tokens7d;
+  let tokensMonth;
+  if (daily && daily.length > 0) {
+    tokens7d = sum(daily.slice(-WEEK_DAYS));
+    if (hasMonth && daily.length >= 2) tokensMonth = sum(daily);
+  } else if (hasMonth) {
+    const fallback = await fetchPoints(request, monitorDto(now - WEEK_DAYS * DAY_MS, now, DAY_SECONDS), signal);
+    if (fallback && fallback.length > 0) tokens7d = sum(fallback.slice(-WEEK_DAYS));
+  }
+  const hourly = hourlyRes.status === "fulfilled" ? hourlyRes.value : null;
+  const tokens5h = hourly && hourly.length > 0 ? sum(hourly.slice(-FIVE_HOUR_POINTS)) : void 0;
+  if (tokensMonth === void 0 && tokens7d === void 0 && tokens5h === void 0) return null;
+  const result = { fetchedAt: now, source: "server" };
+  if (tokensMonth !== void 0) result.tokensMonth = tokensMonth;
+  if (tokens7d !== void 0) result.tokens7d = tokens7d;
+  if (tokens5h !== void 0) result.tokens5h = tokens5h;
+  return result;
+}
+
+// src/core/usage-history.ts
+import * as fs4 from "node:fs";
+import * as path5 from "node:path";
+var SCHEMA_VERSION = 1;
+var KEEP_MS = 8 * 24 * 60 * 60 * 1e3;
+var MAX_SAMPLES = 2e3;
+function usageHistoryPath() {
+  return path5.join(stateRoot(), "usage-history.json");
+}
+function isSample(value) {
+  if (!value || typeof value !== "object") return false;
+  const s = value;
+  return typeof s.at === "number" && Number.isFinite(s.at) && typeof s.usedPercent === "number" && Number.isFinite(s.usedPercent) && typeof s.remainingPercent === "number" && Number.isFinite(s.remainingPercent);
+}
+function readUsageHistory() {
+  try {
+    const parsed = JSON.parse(fs4.readFileSync(usageHistoryPath(), "utf8"));
+    if (!parsed || parsed.schemaVersion !== SCHEMA_VERSION || !Array.isArray(parsed.samples)) return [];
+    return parsed.samples.filter(isSample).map((s) => ({ at: s.at, usedPercent: s.usedPercent, remainingPercent: s.remainingPercent })).sort((a, b) => a.at - b.at);
+  } catch {
+    return [];
+  }
+}
+function recordUsageSample(sample) {
+  const entry = { at: sample.at, usedPercent: sample.usedPercent, remainingPercent: sample.remainingPercent };
+  if (!isSample(entry)) return;
+  try {
+    const cutoff = entry.at - KEEP_MS;
+    const samples = readUsageHistory().filter((s) => s.at >= cutoff && s.at !== entry.at).concat(entry).sort((a, b) => a.at - b.at).slice(-MAX_SAMPLES);
+    const file = usageHistoryPath();
+    fs4.mkdirSync(path5.dirname(file), { recursive: true });
+    const tmp = `${file}.tmp`;
+    fs4.writeFileSync(tmp, JSON.stringify({ schemaVersion: SCHEMA_VERSION, samples }));
+    fs4.renameSync(tmp, file);
+  } catch {
+  }
+}
+function periodUsage(history, nowMs, windowMs) {
+  const sinceMs = nowMs - windowMs;
+  const inWindow = history.filter((s) => s.at >= sinceMs && s.at <= nowMs);
+  if (inWindow.length === 0) return { usedPercent: 0, since: null, samples: 0 };
+  let first = inWindow[0];
+  let last = inWindow[0];
+  for (const s of inWindow) {
+    if (s.at < first.at) first = s;
+    if (s.at >= last.at) last = s;
+  }
+  const delta = Math.round(Math.max(0, last.usedPercent - first.usedPercent) * 100) / 100;
+  return { usedPercent: delta, since: first.at, samples: inWindow.length };
+}
+
+// src/tui/state.ts
+var REFRESH_INTERVAL_MS = 6e4;
+var WEEK_MS = 7 * 24 * 60 * 60 * 1e3;
+var FIVE_HOUR_MS = 5 * 60 * 60 * 1e3;
+function fallbackSnapshot() {
+  return {
+    ok: false,
+    source: null,
+    fetchedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    plan: null,
+    window: null,
+    addon: null,
+    qwenwork: null,
+    error: { kind: "unknown", message: "\u989D\u5EA6\u8BF7\u6C42\u5931\u8D25 \xB7 60 \u79D2\u540E\u81EA\u52A8\u91CD\u8BD5" }
+  };
+}
+function usagePeriods(quota, nowMs) {
+  if (!quota.ok || !quota.window) return void 0;
+  const history = readUsageHistory();
+  return {
+    week: periodUsage(history, nowMs, WEEK_MS),
+    fiveHour: periodUsage(history, nowMs, FIVE_HOUR_MS)
+  };
+}
+function createTokenPlanView() {
+  const [status, setStatus] = createSignal(null);
+  const [refreshing, setRefreshing] = createSignal(false);
+  const [lastError, setLastError] = createSignal(null);
+  let version = 0;
+  let inFlight = null;
+  let controller = null;
+  let disposed = false;
+  let lastDocument = null;
+  const apply = (snapshot, opts = {}) => {
+    if (disposed) return;
+    try {
+      const previous = status();
+      if (snapshot.ok) {
+        setLastError(null);
+      } else {
+        setLastError(snapshot.error?.message ?? "\u989D\u5EA6\u8BF7\u6C42\u5931\u8D25 \xB7 60 \u79D2\u540E\u81EA\u52A8\u91CD\u8BD5");
+        if (previous && !opts.discountChanged && opts.series === void 0) return;
+      }
+      const effectiveQuota = snapshot.ok || !previous ? snapshot : previous.quota;
+      const now = /* @__PURE__ */ new Date();
+      if (snapshot.ok && snapshot.source !== "cache" && snapshot.window && Number.isFinite(snapshot.window.usedPercent)) {
+        recordUsageSample({
+          at: now.getTime(),
+          usedPercent: snapshot.window.usedPercent,
+          remainingPercent: snapshot.window.remainingPercent
+        });
+      }
+      const series = opts.series !== void 0 ? opts.series : previous?.usageSeries;
+      setStatus(buildMergedStatus(
+        effectiveQuota,
+        now,
+        lastDocument ?? void 0,
+        usagePeriods(effectiveQuota, now.getTime()),
+        series
+      ));
+    } catch {
+    }
+  };
+  const refresh = () => {
+    if (inFlight) return inFlight;
+    const mine = ++version;
+    controller = new AbortController();
+    const signal = controller.signal;
+    setRefreshing(true);
+    const run2 = (async () => {
+      const [quotaResult, documentResult] = await Promise.allSettled([
+        fetchQuota({ signal }),
+        fetchPersonalPlanOffers({ signal })
+      ]);
+      const snapshot = quotaResult.status === "fulfilled" ? quotaResult.value : fallbackSnapshot();
+      const series = await fetchUsageSeries({ signal, resetAtMs: snapshot.window?.resetAtMs ?? null });
+      if (disposed || mine !== version) return;
+      const discountChanged = documentResult.status === "fulfilled";
+      if (discountChanged) lastDocument = documentResult.value;
+      apply(snapshot, { discountChanged, series });
+      if (snapshot.ok) void writeQuotaCache(snapshot).catch(() => {
+      });
+    })();
+    inFlight = run2.finally(() => {
+      if (mine !== version) return;
+      setRefreshing(false);
+      inFlight = null;
+    });
+    return inFlight;
+  };
+  void readQuotaCache().then((cached2) => {
+    if (cached2 && !status()) apply(cached2);
+  }).catch(() => {
+  });
+  void refresh();
+  const timer = setInterval(() => void refresh(), REFRESH_INTERVAL_MS);
+  return {
+    status,
+    refreshing,
+    lastError,
+    refresh,
+    dispose() {
+      disposed = true;
+      version += 1;
+      clearInterval(timer);
+      controller?.abort();
+      controller = null;
+    }
+  };
+}
+function createClock(intervalMs = 1e3) {
+  const [now, setNow] = createSignal(Date.now());
+  const timer = setInterval(() => setNow(Date.now()), intervalMs);
+  onCleanup(() => clearInterval(timer));
+  return now;
+}
+
+// src/tui/views.tsx
+import { effect as _$effect } from "@opentui/solid";
+import { memo as _$memo } from "@opentui/solid";
+import { createComponent as _$createComponent } from "@opentui/solid";
+import { insertNode as _$insertNode } from "@opentui/solid";
+import { spread as _$spread } from "@opentui/solid";
+import { mergeProps as _$mergeProps } from "@opentui/solid";
+import { insert as _$insert } from "@opentui/solid";
+import { setProp as _$setProp } from "@opentui/solid";
+import { createElement as _$createElement } from "@opentui/solid";
+import { For, Show } from "solid-js";
+
+// src/tui/format.ts
+var DASH = "\u2014";
+function localStamp(iso) {
+  const ms = Date.parse(iso);
+  return Number.isNaN(ms) ? DASH : formatTs(ms).slice(0, 16);
+}
+function rowLabelText(label) {
+  return `${label.padEnd(12)} `;
+}
+function quotaSeverity(usedPercent) {
+  if (usedPercent === null || usedPercent === void 0 || !Number.isFinite(usedPercent)) return null;
+  if (usedPercent >= 90) return "error";
+  if (usedPercent >= 70) return "warning";
+  return "success";
+}
+var NAMED_SEVERITY_FG = { success: "green", warning: "yellow", error: "red" };
+function parseRgb(color) {
+  const value = color.trim();
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(value);
+  if (hex) {
+    const raw = hex[1].length === 3 ? hex[1].split("").map((char) => char + char).join("") : hex[1];
+    return [parseInt(raw.slice(0, 2), 16), parseInt(raw.slice(2, 4), 16), parseInt(raw.slice(4, 6), 16)];
+  }
+  const rgb = /^rgba?\(([^)]+)\)$/i.exec(value);
+  if (!rgb) return null;
+  const parts = rgb[1].split(/[,/\s]+/).filter(Boolean).map((part) => Number.parseFloat(part));
+  if (parts.length < 3 || !parts.slice(0, 3).every((n) => Number.isFinite(n))) return null;
+  return [parts[0], parts[1], parts[2]];
+}
+function isWashedOut(color) {
+  const rgb = parseRgb(color);
+  if (!rgb) return false;
+  const max = Math.max(...rgb);
+  const min = Math.min(...rgb);
+  return max > 200 && max - min < 40;
+}
+function quotaSeverityFg(theme, severity) {
+  const feedback = theme.text.feedback;
+  const fg = severity === "error" ? feedback?.error?.base : severity === "warning" ? feedback?.warning?.base : severity === "success" ? feedback?.success?.base : void 0;
+  if (fg && fg !== theme.text.base && !isWashedOut(fg)) return fg;
+  return severity ? NAMED_SEVERITY_FG[severity] : theme.text.base;
+}
+function overlayFg(theme, period) {
+  const feedback = theme.text.feedback;
+  const preferred = period === "fiveHour" ? feedback?.info?.base : feedback?.warning?.base;
+  if (preferred && preferred !== theme.text.base) return preferred;
+  return period === "fiveHour" ? "cyan" : "yellow";
+}
+var METER = /^(.*?)([█░]{16} \d+(?:\.\d+)?%)(.*)$/;
+function splitMeter(line) {
+  const parts = METER.exec(line);
+  return parts ? [parts[1], parts[2], parts[3]] : null;
+}
+function isQuotaMeterLine(line) {
+  return splitMeter(line) !== null;
+}
+function percent(value) {
+  if (value === null || value === void 0 || !Number.isFinite(value)) return DASH;
+  return `${value.toFixed(1)}%`;
+}
+function remainingOf(usedPercent) {
+  return Math.round((100 - usedPercent) * 10) / 10;
+}
+function usageBar(usedPercent, width = 16) {
+  if (usedPercent === null || usedPercent === void 0 || !Number.isFinite(usedPercent)) return "";
+  const clamped = Math.max(0, Math.min(100, usedPercent));
+  const used = Math.round(clamped / 100 * width);
+  return "\u2588".repeat(used) + "\u2591".repeat(width - used);
+}
+function consumedPercent(value) {
+  if (value === null || value === void 0 || !Number.isFinite(value)) return DASH;
+  return `-${Math.abs(value).toFixed(1)}%`;
+}
+function barSegments(bar) {
+  const segments = [];
+  for (const char of bar) {
+    const kind = char === "\u2588" ? "month" : char === "\u2593" ? "period" : "rest";
+    const last = segments[segments.length - 1];
+    if (last && last.kind === kind) last.text += char;
+    else segments.push({ kind, text: char });
+  }
+  return segments;
+}
+function segmentedBar(monthUsedPercent, periodUsedPercent, width = 16) {
+  if (monthUsedPercent === null || monthUsedPercent === void 0 || !Number.isFinite(monthUsedPercent)) return "";
+  const monthUsed = Math.round(Math.max(0, Math.min(100, monthUsedPercent)) / 100 * width);
+  const period = periodUsedPercent === null || periodUsedPercent === void 0 || !Number.isFinite(periodUsedPercent) ? 0 : Math.max(0, Math.min(100, periodUsedPercent));
+  const span = Math.min(width - monthUsed, Math.round(period / 100 * width));
+  const cells = Array.from(
+    { length: width },
+    (_, index) => index < monthUsed ? "\u2588" : index < monthUsed + span ? "\u2593" : "\u2591"
+  );
+  return cells.join("");
+}
+function tokenTotal(value) {
+  if (value === null || value === void 0 || !Number.isFinite(value)) return "";
+  const n = Math.max(0, value);
+  if (n < 1e3) return `${Math.round(n)} Token`;
+  if (n < 1e6) return `${(n / 1e3).toFixed(2)}K Token`;
+  if (n < 1e9) return `${(n / 1e6).toFixed(2)}M Token`;
+  return `${(n / 1e9).toFixed(2)}B Token`;
+}
+function credits(value) {
+  if (value === null || value === void 0 || !Number.isFinite(value)) return DASH;
+  return Math.round(value).toLocaleString("zh-CN");
+}
+function windowLabel2(key) {
+  if (key === "5h") return "5 \u5C0F\u65F6";
+  return key === "week" ? "\u5468" : "\u6708";
+}
+function windowCountdown(view, nowMs, compact = false) {
+  const at = Date.parse(view.nextBoundaryAt);
+  if (Number.isNaN(at)) return view.activeNow ? "\u8FDB\u884C\u4E2D" : "\u5373\u5C06\u5F00\u59CB";
+  const left = at - nowMs;
+  const span = compact ? fmtShortDur(left) : fmtHMS(left);
+  return view.activeNow ? `${span} \u540E\u7ED3\u675F` : `${span} \u540E\u5F00\u59CB`;
+}
+function nearestWindow(discount, nowMs) {
+  let best = null;
+  for (const view of discount.windows) {
+    const parsed = Date.parse(view.nextBoundaryAt);
+    const at = Number.isNaN(parsed) ? nowMs + Number.MAX_SAFE_INTEGER : parsed;
+    const rank = view.activeNow ? 0 : 1;
+    if (!best || rank < best.rank || rank === best.rank && at < best.at) best = { view, rank, at };
+  }
+  return best?.view ?? null;
+}
+var MONTH_LABEL = "\u6708\u989D\u5EA6";
+function quotaLines(quota, nowMs, series) {
+  if (!quota.ok) return [];
+  const view = quota.window;
+  if (!view) return quota.plan?.status ? [`\u5957\u9910 ${quota.plan.status}`] : [];
+  const left = view.resetAtMs === null ? null : view.resetAtMs - nowMs;
+  const reset = left !== null && left > 0 ? `${fmtShortDur(left)} \u540E\u91CD\u7F6E` : view.resetTime ? `\u91CD\u7F6E ${view.resetTime}` : "";
+  const total = tokenTotal(series?.tokensMonth);
+  const value = [usageBar(view.usedPercent), percent(view.usedPercent), total].filter(Boolean).join(" ");
+  return [reset ? `${MONTH_LABEL} \xB7 ${reset}` : MONTH_LABEL, value];
+}
+function tierOf(model) {
+  const raw = model.effective ?? model.regular;
+  if (!raw) return null;
+  const factor = Number.parseFloat(raw);
+  if (!Number.isFinite(factor) || factor <= 0 || factor > 1) return null;
+  return Math.round(factor * 100) / 10;
+}
+function fmtTier(value) {
+  return String(Number(value.toFixed(1)));
+}
+function isQwen(model) {
+  return model.model.toLowerCase().startsWith("qwen");
+}
+function factorOf(model) {
+  const factor = Number.parseFloat(model.effective ?? model.regular ?? "");
+  return Number.isFinite(factor) ? factor : Number.POSITIVE_INFINITY;
+}
+function orderedModels(models) {
+  return [...models].sort(
+    (a, b) => Number(isQwen(b)) - Number(isQwen(a)) || factorOf(a) - factorOf(b) || a.model.localeCompare(b.model)
+  );
+}
+function sidebarModelLines(view) {
+  const ranked = orderedModels(view.models).map((model) => ({ model, tier: tierOf(model) })).filter((entry) => entry.tier !== null);
+  const picked = ranked.filter((entry) => isQwen(entry.model)).slice(0, 3);
+  if (picked.length < 3) {
+    picked.push(...ranked.filter((entry) => !isQwen(entry.model)).slice(0, 3 - picked.length));
+  }
+  return picked.map((entry) => `${entry.model.model} ${fmtTier(entry.tier)} \u6298`);
+}
+function sidebarCountdownLine(view, nowMs) {
+  return `\u591C\u95F4 ${windowCountdown(view, nowMs, true)}`;
+}
+function periodValue(period, monthUsedPercent, tokens) {
+  const total = tokenTotal(tokens);
+  if (period.samples === 0) return `\u6570\u636E\u91C7\u96C6\u4E2D${total ? ` \xB7 ${total}` : ""}`;
+  return [segmentedBar(monthUsedPercent, period.usedPercent), consumedPercent(period.usedPercent), total].filter(Boolean).join(" ");
+}
+function sidebarLines(status, nowMs) {
+  const lines = [...quotaLines(status.quota, nowMs, status.usageSeries)];
+  const near = nearestWindow(status.discount, nowMs);
+  if (near) lines.push(sidebarCountdownLine(near, nowMs));
+  if (near) lines.push(...sidebarModelLines(near));
+  const view = status.quota.window;
+  const periods = status.usagePeriods;
+  if (view && periods) {
+    lines.push("");
+    lines.push("\u8FD17\u5929\u6D88\u8017");
+    lines.push(periodValue(periods.week, view.usedPercent, status.usageSeries?.tokens7d));
+    lines.push("");
+    lines.push("\u8FD15h\u6D88\u8017");
+    lines.push(periodValue(periods.fiveHour, view.usedPercent, status.usageSeries?.tokens5h));
+  }
+  const addon = status.quota.addon;
+  if (addon && !("error" in addon) && addon.totalCredits !== null && addon.totalCredits > 0) {
+    lines.push(`\u52A0\u8D2D\u5269\u4F59 ${credits(addon.remainingCredits)} credits`);
+  }
+  return lines;
+}
+function footerLine(status) {
+  const quota = status.quota;
+  if (!quota.ok) return "";
+  if (quota.window) return `\u989D\u5EA6 ${windowLabel2(quota.window.window)} \u5269 ${percent(remainingOf(quota.window.usedPercent))}`;
+  return quota.plan?.status ? `\u989D\u5EA6 \u5957\u9910 ${quota.plan.status}` : "";
+}
+function quotaRows(quota, nowMs, periods, series) {
+  if (!quota.ok) return [{ label: "\u72B6\u6001", value: quota.error?.message ?? "\u672A\u6388\u6743 \xB7 \u6253\u5F00 /tokenplan \u6388\u6743" }];
+  const rows = [];
+  const plan = quota.plan;
+  if (plan) {
+    rows.push({ label: "\u5957\u9910", value: [plan.status ?? DASH, plan.specCode ?? ""].filter(Boolean).join(" \xB7 ") });
+    if (plan.remainingDays !== null) {
+      rows.push({ label: "\u5269\u4F59", value: `${plan.remainingDays} \u5929${plan.endTime ? ` \xB7 \u5230\u671F ${plan.endTime}` : ""}` });
+    } else if (plan.endTime) {
+      rows.push({ label: "\u5230\u671F", value: plan.endTime });
+    }
+  }
+  const view = quota.window;
+  if (view) {
+    const left = view.resetAtMs === null ? null : view.resetAtMs - nowMs;
+    const reset = left !== null && left > 0 ? `${fmtShortDur(left)} \u540E\u91CD\u7F6E` : view.resetTime ? `\u91CD\u7F6E ${view.resetTime}` : "";
+    const monthTotal = tokenTotal(series?.tokensMonth);
+    const head = [usageBar(view.usedPercent, 10), `${percent(view.usedPercent)} \u5DF2\u7528`].filter(Boolean).join(" ");
+    const rest = [`\u5269 ${percent(remainingOf(view.usedPercent))}`, reset, monthTotal ? `\u5408\u8BA1 ${monthTotal}` : ""].filter(Boolean);
+    const PANEL_ROW_BUDGET = 64;
+    const value = [head, ...rest].join(" \xB7 ");
+    rows.push({
+      label: `${windowLabel2(view.window)}\u7528\u91CF`,
+      value: value.length > PANEL_ROW_BUDGET && rest.length > 1 ? [head, ...rest.slice(1)].join(" \xB7 ") : value,
+      severity: quotaSeverity(view.usedPercent) ?? void 0
+    });
+    if (periods) {
+      rows.push({ label: "\u8FD17\u5929\u6D88\u8017", value: periodValue(periods.week, view.usedPercent, series?.tokens7d), muted: true });
+      rows.push({ label: "\u8FD15h\u6D88\u8017", value: periodValue(periods.fiveHour, view.usedPercent, series?.tokens5h), muted: true });
+    }
+  }
+  const addon = quota.addon;
+  if (addon) {
+    rows.push({
+      label: "\u52A0\u8D2D",
+      value: "error" in addon ? addon.error : [
+        `${credits(addon.remainingCredits)} / ${credits(addon.totalCredits)} credits`,
+        addon.usedPercent === null ? "" : `\u5DF2\u7528 ${percent(addon.usedPercent)}`,
+        addon.activeCount === null ? "" : `${addon.activeCount} \u4E2A\u5728\u6548`
+      ].filter(Boolean).join(" \xB7 ")
+    });
+  }
+  const qwenwork = quota.qwenwork;
+  if (qwenwork) {
+    rows.push({ label: "Qwenwork", value: "error" in qwenwork ? qwenwork.error : `${credits(qwenwork.credits)} credits` });
+  }
+  rows.push({ label: "\u6570\u636E\u6E90", value: `${quota.source ?? DASH} \xB7 ${localStamp(quota.fetchedAt)}`, muted: true });
+  return rows;
+}
+function discountRows(discount, nowMs) {
+  const view = nearestWindow(discount, nowMs);
+  if (!view) return [];
+  const rows = [
+    {
+      // 面板行宽有限：label 只留「夜间折扣 … · 文源 日期」，时段与倒计时移到 value，用 ` · ` 分隔。
+      label: view.label.replace(/^Token Plan\s+/, ""),
+      value: `${view.start}\u2013${view.end} \xB7 ${windowCountdown(view, nowMs)}`
+    }
+  ];
+  for (const model of orderedModels(view.models)) {
+    const prices = [model.effective ? `\u73B0\u4EF7 ${model.effective}` : "", model.regular ? `\u539F\u4EF7 ${model.regular}` : ""].filter(Boolean).join(" / ");
+    rows.push({ label: `  ${model.model}`, value: [prices, model.badge ?? ""].filter(Boolean).join(" \xB7 ") || DASH, muted: true });
+  }
+  return rows;
+}
+
+// src/tui/views.tsx
+var spanFg = (fg) => ({
+  fg
+});
+function QuotaLine(props) {
+  const base = props.theme.text.base;
+  const parts = splitMeter(props.line);
+  if (!parts) {
+    return (() => {
+      var _el$ = _$createElement("text");
+      _$setProp(_el$, "fg", base);
+      _$setProp(_el$, "wrapMode", "none");
+      _$insert(_el$, () => props.line);
+      return _el$;
+    })();
+  }
+  const meterFg = quotaSeverityFg(props.theme, quotaSeverity(props.usedPercent));
+  return (() => {
+    var _el$2 = _$createElement("text"), _el$3 = _$createElement("span"), _el$4 = _$createElement("span"), _el$5 = _$createElement("span");
+    _$insertNode(_el$2, _el$3);
+    _$insertNode(_el$2, _el$4);
+    _$insertNode(_el$2, _el$5);
+    _$setProp(_el$2, "fg", base);
+    _$setProp(_el$2, "wrapMode", "none");
+    _$spread(_el$3, _$mergeProps(() => spanFg(base)), true);
+    _$insert(_el$3, () => parts[0]);
+    _$spread(_el$4, _$mergeProps(() => spanFg(meterFg)), true);
+    _$insert(_el$4, () => parts[1]);
+    _$spread(_el$5, _$mergeProps(() => spanFg(base)), true);
+    _$insert(_el$5, () => parts[2]);
+    return _el$2;
+  })();
+}
+var VALUE_LINE = /^([█▓░]{16}) (?=.*)/;
+function PeriodLine(props) {
+  const base = props.theme.text.base;
+  const muted = props.theme.text.muted;
+  const parts = VALUE_LINE.exec(props.line);
+  if (!parts) {
+    return (() => {
+      var _el$6 = _$createElement("text");
+      _$setProp(_el$6, "fg", muted);
+      _$setProp(_el$6, "wrapMode", "none");
+      _$insert(_el$6, () => props.line);
+      return _el$6;
+    })();
+  }
+  const accent = overlayFg(props.theme, props.overlay);
+  const rest = props.line.slice(parts[1].length);
+  return (() => {
+    var _el$7 = _$createElement("text"), _el$8 = _$createElement("span");
+    _$insertNode(_el$7, _el$8);
+    _$setProp(_el$7, "fg", muted);
+    _$setProp(_el$7, "wrapMode", "none");
+    _$insert(_el$7, _$createComponent(For, {
+      get each() {
+        return barSegments(parts[1]);
+      },
+      children: (segment) => segment.kind === "period" ? (() => {
+        var _el$9 = _$createElement("span");
+        _$spread(_el$9, _$mergeProps(() => spanFg(accent)), true);
+        _$insert(_el$9, () => segment.text);
+        return _el$9;
+      })() : segment.kind === "month" ? (
+        // 已用段：正文亮色（不压暗）
+        (() => {
+          var _el$0 = _$createElement("span");
+          _$spread(_el$0, _$mergeProps(() => spanFg(base)), true);
+          _$insert(_el$0, () => segment.text);
+          return _el$0;
+        })()
+      ) : (
+        // 空轨：灰，弱于已用段
+        (() => {
+          var _el$1 = _$createElement("span");
+          _$spread(_el$1, _$mergeProps(() => spanFg(muted)), true);
+          _$insert(_el$1, () => segment.text);
+          return _el$1;
+        })()
+      )
+    }), _el$8);
+    _$spread(_el$8, _$mergeProps(() => spanFg(muted)), true);
+    _$insert(_el$8, rest);
+    return _el$7;
+  })();
+}
+function SidebarLine(props) {
+  if (isQuotaMeterLine(props.line)) {
+    return _$createComponent(QuotaLine, {
+      get theme() {
+        return props.theme;
+      },
+      get line() {
+        return props.line;
+      },
+      get usedPercent() {
+        return props.usedPercent;
+      }
+    });
+  }
+  if (VALUE_LINE.test(props.line)) {
+    return _$createComponent(PeriodLine, {
+      get theme() {
+        return props.theme;
+      },
+      get line() {
+        return props.line;
+      },
+      get overlay() {
+        return props.overlay;
+      }
+    });
+  }
+  const fg = props.line.startsWith(MONTH_LABEL) ? props.theme.text.base : props.theme.text.muted;
+  return (() => {
+    var _el$10 = _$createElement("text");
+    _$setProp(_el$10, "fg", fg);
+    _$setProp(_el$10, "wrapMode", "none");
+    _$insert(_el$10, (() => {
+      var _c$ = _$memo(() => props.line.length > 0);
+      return () => _c$() ? props.line : " ";
+    })());
+    return _el$10;
+  })();
+}
+function SidebarView(props) {
+  const now = createClock();
+  const status = () => props.view.status();
+  const lines = () => {
+    const current = status();
+    return current ? sidebarLines(current, now()) : [];
+  };
+  return (() => {
+    var _el$11 = _$createElement("box");
+    _$setProp(_el$11, "flexDirection", "column");
+    _$insert(_el$11, _$createComponent(For, {
+      get each() {
+        return lines();
+      },
+      children: (line, index) => _$createComponent(SidebarLine, {
+        get theme() {
+          return props.context.theme;
+        },
+        line,
+        get usedPercent() {
+          return status()?.quota.window?.usedPercent;
+        },
+        get overlay() {
+          return index() > 0 && lines()[index() - 1] === "\u8FD15h\u6D88\u8017" ? "fiveHour" : "week";
+        }
+      })
+    }));
+    return _el$11;
+  })();
+}
+function FooterView(props) {
+  const line = () => {
+    const status = props.view.status();
+    return status ? footerLine(status) : "";
+  };
+  return _$createComponent(Show, {
+    get when() {
+      return line().length > 0;
+    },
+    get children() {
+      var _el$12 = _$createElement("text");
+      _$setProp(_el$12, "wrapMode", "none");
+      _$insert(_el$12, line);
+      _$effect((_$p) => _$setProp(_el$12, "fg", props.context.theme.text.muted, _$p));
+      return _el$12;
+    }
+  });
+}
+
+// src/tui/panel.tsx
+import { use as _$use } from "@opentui/solid";
+import { createTextNode as _$createTextNode2 } from "@opentui/solid";
+import { memo as _$memo3 } from "@opentui/solid";
+import { createComponent as _$createComponent3 } from "@opentui/solid";
+import { effect as _$effect3 } from "@opentui/solid";
+import { insertNode as _$insertNode3 } from "@opentui/solid";
+import { insert as _$insert3 } from "@opentui/solid";
+import { spread as _$spread2 } from "@opentui/solid";
+import { mergeProps as _$mergeProps2 } from "@opentui/solid";
+import { setProp as _$setProp3 } from "@opentui/solid";
+import { createElement as _$createElement3 } from "@opentui/solid";
+import { For as For3, Show as Show3, createSignal as createSignal3 } from "solid-js";
+import { TextAttributes } from "@opentui/core";
+import { useTerminalDimensions } from "@opentui/solid";
+
+// src/tui/login.tsx
+import { effect as _$effect2 } from "@opentui/solid";
+import { createTextNode as _$createTextNode } from "@opentui/solid";
+import { insertNode as _$insertNode2 } from "@opentui/solid";
+import { memo as _$memo2 } from "@opentui/solid";
+import { insert as _$insert2 } from "@opentui/solid";
+import { createComponent as _$createComponent2 } from "@opentui/solid";
+import { setProp as _$setProp2 } from "@opentui/solid";
+import { createElement as _$createElement2 } from "@opentui/solid";
+import { For as For2, Show as Show2, createSignal as createSignal2, onCleanup as onCleanup2 } from "solid-js";
+function loginSuccessNotice(storage2) {
+  if (storage2 === "dpapi") return "\u6388\u6743\u6210\u529F \xB7 \u51ED\u8BC1\u5DF2\u52A0\u5BC6\u4FDD\u5B58";
+  if (storage2 === "session") return "\u6388\u6743\u6210\u529F \xB7 \u4EC5\u672C\u6B21\u4F1A\u8BDD\uFF08\u91CD\u542F\u540E\u9700\u91CD\u65B0\u6388\u6743\uFF09";
+  return "\u6388\u6743\u6210\u529F";
+}
+var PHASE_TEXT = {
+  launching: "\u6B63\u5728\u542F\u52A8\u6D4F\u89C8\u5668\u2026",
+  "waiting-login": "\u8BF7\u5728\u6D4F\u89C8\u5668\u4E2D\u5B8C\u6210\u767B\u5F55",
+  verifying: "\u6B63\u5728\u6821\u9A8C\u767B\u5F55\u6001\u2026",
+  closing: "\u6B63\u5728\u5173\u95ED\u6D4F\u89C8\u5668\u2026"
+};
+function adapterLabel(id) {
+  switch (id) {
+    case "cdp-own-profile":
+      return "\u6253\u5F00\u63D2\u4EF6\u4E13\u7528\u6D4F\u89C8\u5668\u7A97\u53E3\uFF0C\u767B\u5F55\u4E00\u6B21";
+    case "firefox-sqlite":
+      return "\u8BFB\u53D6 Firefox \u5DF2\u4FDD\u5B58\u7684\u767B\u5F55 Cookie";
+    case "manual-paste":
+      return "\u7C98\u8D34\u63A7\u5236\u53F0 Cookie";
+    default:
+      return id;
+  }
+}
+function headerLine(found) {
+  const names = found.browsers.map((browser) => browser.label);
+  return names.length ? `\u5F53\u524D\u53EF\u7528\uFF1A${names.join(" / ")}` : "\u672A\u68C0\u6D4B\u5230\u5DF2\u5B89\u88C5\u7684\u6D4F\u89C8\u5668";
+}
+function LoginFlow(props) {
+  const [detection, setDetection] = createSignal2(null);
+  const [choice, setChoice] = createSignal2(0);
+  const [progress, setProgress] = createSignal2(null);
+  const [error, setError] = createSignal2(null);
+  let controller = null;
+  onCleanup2(() => controller?.abort());
+  const detect2 = () => {
+    void detectCredentialAdapters().then((next) => {
+      setDetection(next);
+      setChoice(0);
+    }).catch(() => {
+      setDetection({
+        browsers: [],
+        adapters: [],
+        preferred: null
+      });
+    });
+  };
+  detect2();
+  const options = () => detection()?.adapters ?? [];
+  const start = (adapter) => {
+    if (progress()) return;
+    if (adapter === "manual-paste") {
+      props.onManualPaste();
+      return;
+    }
+    const abort = new AbortController();
+    controller = abort;
+    setError(null);
+    setProgress({
+      phase: "launching",
+      secondsLeft: 180
+    });
+    void login({
+      signal: abort.signal,
+      adapters: [adapter],
+      onProgress: setProgress
+    }).then((result) => {
+      if (abort.signal.aborted) return;
+      controller = null;
+      setProgress(null);
+      if (result.ok) props.onFinished(result.storage);
+      else setError(result.message);
+    }).catch(() => {
+      controller = null;
+      setProgress(null);
+      setError("\u767B\u5F55\u6D41\u7A0B\u5F02\u5E38\u4E2D\u6B62\uFF0C\u8BF7\u91CD\u8BD5");
+    });
+  };
+  props.context.keymap.layer(() => ({
+    mode: "modal",
+    commands: [{
+      bind: "up",
+      title: "\u4E0A\u4E00\u9879",
+      group: "Token Plan",
+      enabled: () => !progress(),
+      run: () => setChoice((index) => Math.max(0, index - 1))
+    }, {
+      bind: "down",
+      title: "\u4E0B\u4E00\u9879",
+      group: "Token Plan",
+      enabled: () => !progress(),
+      run: () => setChoice((index) => Math.min(options().length - 1, index + 1))
+    }, {
+      bind: "return",
+      title: "\u5F00\u59CB\u6388\u6743",
+      group: "Token Plan",
+      enabled: () => !progress() && options().length > 0,
+      run: () => {
+        const adapter = options()[choice()];
+        if (adapter) start(adapter);
+      }
+    }]
+  }));
+  const theme = () => props.context.theme;
+  return (() => {
+    var _el$ = _$createElement2("box");
+    _$setProp2(_el$, "flexDirection", "column");
+    _$insert2(_el$, _$createComponent2(Show2, {
+      get when() {
+        return progress();
+      },
+      children: (current) => (() => {
+        var _el$2 = _$createElement2("box"), _el$3 = _$createElement2("text"), _el$4 = _$createElement2("text"), _el$5 = _$createTextNode(`\u5269\u4F59 `), _el$6 = _$createTextNode(` \u79D2 \xB7 Esc \u53D6\u6D88`);
+        _$insertNode2(_el$2, _el$3);
+        _$insertNode2(_el$2, _el$4);
+        _$setProp2(_el$2, "flexDirection", "column");
+        _$insert2(_el$3, () => PHASE_TEXT[current().phase] ?? "\u7B49\u5F85\u767B\u5F55");
+        _$insertNode2(_el$4, _el$5);
+        _$insertNode2(_el$4, _el$6);
+        _$insert2(_el$4, () => current().secondsLeft, _el$6);
+        _$effect2((_p$) => {
+          var _v$ = theme().text.base, _v$2 = theme().text.muted;
+          _v$ !== _p$.e && (_p$.e = _$setProp2(_el$3, "fg", _v$, _p$.e));
+          _v$2 !== _p$.t && (_p$.t = _$setProp2(_el$4, "fg", _v$2, _p$.t));
+          return _p$;
+        }, {
+          e: void 0,
+          t: void 0
+        });
+        return _el$2;
+      })()
+    }), null);
+    _$insert2(_el$, _$createComponent2(Show2, {
+      get when() {
+        return !progress();
+      },
+      get children() {
+        return _$createComponent2(Show2, {
+          get when() {
+            return detection();
+          },
+          get fallback() {
+            return (() => {
+              var _el$7 = _$createElement2("text");
+              _$insertNode2(_el$7, _$createTextNode(`\u6B63\u5728\u68C0\u6D4B\u53EF\u7528\u6D4F\u89C8\u5668\u2026`));
+              _$effect2((_$p) => _$setProp2(_el$7, "fg", theme().text.muted, _$p));
+              return _el$7;
+            })();
+          },
+          children: (found) => (() => {
+            var _el$9 = _$createElement2("box"), _el$0 = _$createElement2("text");
+            _$insertNode2(_el$9, _el$0);
+            _$setProp2(_el$9, "flexDirection", "column");
+            _$insert2(_el$0, () => headerLine(found()));
+            _$insert2(_el$9, _$createComponent2(Show2, {
+              get when() {
+                return options().length > 0;
+              },
+              get fallback() {
+                return (() => {
+                  var _el$1 = _$createElement2("text");
+                  _$insertNode2(_el$1, _$createTextNode(`\u672A\u68C0\u6D4B\u5230\u53EF\u7528\u6388\u6743\u65B9\u5F0F \xB7 \u8BF7\u7A0D\u540E\u91CD\u8BD5`));
+                  _$effect2((_$p) => _$setProp2(_el$1, "fg", theme().text.muted, _$p));
+                  return _el$1;
+                })();
+              },
+              get children() {
+                return _$createComponent2(For2, {
+                  get each() {
+                    return options();
+                  },
+                  children: (adapter, index) => (() => {
+                    var _el$11 = _$createElement2("box"), _el$12 = _$createElement2("text");
+                    _$insertNode2(_el$11, _el$12);
+                    _$setProp2(_el$11, "onMouseDown", () => {
+                      setChoice(index());
+                      start(adapter);
+                    });
+                    _$setProp2(_el$12, "wrapMode", "none");
+                    _$insert2(_el$12, () => index() === choice() ? "\u25B6 " : "  ", null);
+                    _$insert2(_el$12, () => adapterLabel(adapter), null);
+                    _$insert2(_el$12, () => found().preferred === adapter ? "\uFF08\u63A8\u8350\uFF09" : "", null);
+                    _$effect2((_$p) => _$setProp2(_el$12, "fg", index() === choice() ? theme().text.action.primary.selected : theme().text.base, _$p));
+                    return _el$11;
+                  })()
+                });
+              }
+            }), null);
+            _$effect2((_$p) => _$setProp2(_el$0, "fg", theme().text.muted, _$p));
+            return _el$9;
+          })()
+        });
+      }
+    }), null);
+    _$insert2(_el$, _$createComponent2(Show2, {
+      get when() {
+        return error();
+      },
+      children: (message) => (() => {
+        var _el$13 = _$createElement2("text");
+        _$insert2(_el$13, message);
+        _$effect2((_$p) => _$setProp2(_el$13, "fg", theme().text.base, _$p));
+        return _el$13;
+      })()
+    }), null);
+    return _el$;
+  })();
+}
+
+// src/tui/panel.tsx
+function RowLine(props) {
+  return (() => {
+    var _el$ = _$createElement3("text"), _el$2 = _$createElement3("span");
+    _$insertNode3(_el$, _el$2);
+    _$setProp3(_el$, "wrapMode", "none");
+    _$setProp3(_el$, "truncate", true);
+    _$spread2(_el$2, _$mergeProps2(() => spanFg(props.mutedFg)), true);
+    _$insert3(_el$2, () => rowLabelText(props.row.label));
+    _$insert3(_el$, () => props.row.value, null);
+    _$effect3((_$p) => _$setProp3(_el$, "fg", props.row.muted ? props.mutedFg : props.valueFg ?? props.baseFg, _$p));
+    return _el$;
+  })();
+}
+function TokenPlanPanel(props) {
+  const [mode, setMode] = createSignal3("report");
+  const [notice, setNotice] = createSignal3(props.initialNotice ?? null);
+  const now = createClock();
+  const dimensions = useTerminalDimensions();
+  let scroll;
+  const close = () => props.context.ui.dialog.clear();
+  const theme = () => props.context.theme;
+  const maxHeight = () => Math.max(8, Math.floor(dimensions().height * 0.7) - 6);
+  const repaint = (notice2) => {
+    props.context.ui.dialog.show(() => _$createComponent3(TokenPlanPanel, {
+      get context() {
+        return props.context;
+      },
+      get view() {
+        return props.view;
+      },
+      initialNotice: notice2
+    }));
+    props.context.ui.dialog.set({
+      size: "large"
+    });
+  };
+  const requestPaste = () => {
+    setNotice(null);
+    void props.context.ui.dialog.prompt({
+      title: "\u7C98\u8D34\u63A7\u5236\u53F0 Cookie",
+      description: "\u4ECE\u5DF2\u767B\u5F55\u7684\u767E\u70BC\u63A7\u5236\u53F0\u590D\u5236 Cookie\uFF08\u5355\u884C\uFF0C\u81F3\u5C11\u4E24\u4E2A name=value \u5BF9\uFF09\u3002\u5185\u5BB9\u4E0D\u56DE\u663E\u3001\u4E0D\u5199\u65E5\u5FD7\u3001\u4E0D\u8FDB\u7F13\u5B58\u3002",
+      placeholder: "name=value; name2=value2"
+    }).then(async (raw) => {
+      if (raw === void 0) {
+        repaint();
+        return;
+      }
+      const result = await submitManualCookie(raw, new AbortController().signal).catch(() => ({
+        ok: false,
+        message: "Cookie \u6821\u9A8C\u5931\u8D25 \xB7 \u8BF7\u91CD\u8BD5"
+      }));
+      if (!result.ok) {
+        await props.context.ui.dialog.alert({
+          title: "\u6388\u6743\u5931\u8D25",
+          message: result.message
+        });
+        repaint();
+        return;
+      }
+      repaint({
+        storage: result.storage
+      });
+      void props.view.refresh();
+    });
+  };
+  const quotaSection = () => {
+    const status = props.view.status();
+    return status ? quotaRows(status.quota, now(), status.usagePeriods, status.usageSeries) : [{
+      label: "\u72B6\u6001",
+      value: "\u8F7D\u5165\u4E2D\u2026"
+    }];
+  };
+  const discountSection = () => {
+    const status = props.view.status();
+    return status ? discountRows(status.discount, now()) : [];
+  };
+  props.context.keymap.layer(() => ({
+    mode: "modal",
+    commands: [{
+      bind: "return",
+      title: "\u5173\u95ED",
+      group: "Token Plan",
+      enabled: () => mode() === "report",
+      run: close
+    }, {
+      id: "tokenplan.authorize",
+      bind: "a",
+      title: "\u6388\u6743 / \u91CD\u65B0\u6388\u6743",
+      group: "Token Plan",
+      enabled: () => mode() === "report",
+      run: () => {
+        setNotice(null);
+        setMode("login");
+      }
+    }, {
+      id: "tokenplan.forget",
+      bind: "d",
+      title: "\u9000\u51FA\u767B\u5F55 / \u6E05\u9664\u51ED\u8BC1",
+      group: "Token Plan",
+      enabled: () => mode() === "report",
+      run: async () => {
+        await forgetCredential();
+        setNotice(null);
+        setMode("report");
+        await props.view.refresh();
+      }
+    }, {
+      bind: "up",
+      title: "\u4E0A\u4E00\u884C",
+      group: "Token Plan",
+      enabled: () => mode() === "report",
+      run: () => scroll?.scrollBy(-1)
+    }, {
+      bind: "down",
+      title: "\u4E0B\u4E00\u884C",
+      group: "Token Plan",
+      enabled: () => mode() === "report",
+      run: () => scroll?.scrollBy(1)
+    }, {
+      bind: "pageup",
+      title: "\u4E0A\u4E00\u9875",
+      group: "Token Plan",
+      enabled: () => mode() === "report",
+      run: () => scroll?.scrollBy(-maxHeight())
+    }, {
+      bind: "pagedown",
+      title: "\u4E0B\u4E00\u9875",
+      group: "Token Plan",
+      enabled: () => mode() === "report",
+      run: () => scroll?.scrollBy(maxHeight())
+    }]
+  }));
+  return (() => {
+    var _el$3 = _$createElement3("box"), _el$4 = _$createElement3("text"), _el$5 = _$createElement3("text");
+    _$insertNode3(_el$3, _el$4);
+    _$insertNode3(_el$3, _el$5);
+    _$setProp3(_el$3, "flexDirection", "column");
+    _$setProp3(_el$3, "paddingLeft", 2);
+    _$setProp3(_el$3, "paddingRight", 2);
+    _$insert3(_el$4, () => mode() === "login" ? "Token Plan \u6388\u6743" : `Token Plan \u989D\u5EA6\u4E0E\u4F18\u60E0 \xB7 v${"0.2.16"}`);
+    _$insert3(_el$3, _$createComponent3(Show3, {
+      get when() {
+        return notice();
+      },
+      children: (current) => (() => {
+        var _el$6 = _$createElement3("text");
+        _$insert3(_el$6, () => loginSuccessNotice(current().storage));
+        _$effect3((_$p) => _$setProp3(_el$6, "fg", current().storage === "session" ? theme().text.feedback.warning.base : theme().text.base, _$p));
+        return _el$6;
+      })()
+    }), _el$5);
+    _$insert3(_el$3, _$createComponent3(Show3, {
+      get when() {
+        return props.view.lastError();
+      },
+      children: (message) => (() => {
+        var _el$7 = _$createElement3("text"), _el$8 = _$createTextNode2(`\u26A0 `);
+        _$insertNode3(_el$7, _el$8);
+        _$insert3(_el$7, message, null);
+        _$effect3((_$p) => _$setProp3(_el$7, "fg", theme().text.muted, _$p));
+        return _el$7;
+      })()
+    }), _el$5);
+    _$insert3(_el$3, _$createComponent3(Show3, {
+      get when() {
+        return mode() === "login";
+      },
+      get fallback() {
+        return (() => {
+          var _el$9 = _$createElement3("scrollbox"), _el$0 = _$createElement3("box"), _el$1 = _$createElement3("text"), _el$11 = _$createElement3("text");
+          _$insertNode3(_el$9, _el$0);
+          _$use((element) => scroll = element, _el$9);
+          _$insertNode3(_el$0, _el$1);
+          _$insertNode3(_el$0, _el$11);
+          _$setProp3(_el$0, "flexDirection", "column");
+          _$insertNode3(_el$1, _$createTextNode2(`\u989D\u5EA6`));
+          _$insert3(_el$0, _$createComponent3(For3, {
+            get each() {
+              return quotaSection();
+            },
+            children: (row) => _$createComponent3(RowLine, {
+              row,
+              get mutedFg() {
+                return theme().text.muted;
+              },
+              get baseFg() {
+                return theme().text.base;
+              },
+              get valueFg() {
+                return _$memo3(() => !!row.severity)() ? quotaSeverityFg(theme(), row.severity) : void 0;
+              }
+            })
+          }), _el$11);
+          _$insertNode3(_el$11, _$createTextNode2(`\u4F18\u60E0\u7A97\u53E3`));
+          _$insert3(_el$0, _$createComponent3(For3, {
+            get each() {
+              return discountSection();
+            },
+            children: (row) => _$createComponent3(RowLine, {
+              row,
+              get mutedFg() {
+                return theme().text.muted;
+              },
+              get baseFg() {
+                return theme().text.base;
+              }
+            })
+          }), null);
+          _$effect3((_p$) => {
+            var _v$4 = maxHeight(), _v$5 = TextAttributes.BOLD, _v$6 = theme().text.action.primary.selected, _v$7 = TextAttributes.BOLD, _v$8 = theme().text.action.primary.selected;
+            _v$4 !== _p$.e && (_p$.e = _$setProp3(_el$9, "maxHeight", _v$4, _p$.e));
+            _v$5 !== _p$.t && (_p$.t = _$setProp3(_el$1, "attributes", _v$5, _p$.t));
+            _v$6 !== _p$.a && (_p$.a = _$setProp3(_el$1, "fg", _v$6, _p$.a));
+            _v$7 !== _p$.o && (_p$.o = _$setProp3(_el$11, "attributes", _v$7, _p$.o));
+            _v$8 !== _p$.i && (_p$.i = _$setProp3(_el$11, "fg", _v$8, _p$.i));
+            return _p$;
+          }, {
+            e: void 0,
+            t: void 0,
+            a: void 0,
+            o: void 0,
+            i: void 0
+          });
+          return _el$9;
+        })();
+      },
+      get children() {
+        return _$createComponent3(LoginFlow, {
+          get context() {
+            return props.context;
+          },
+          onFinished: (storage2) => {
+            setNotice({
+              storage: storage2
+            });
+            setMode("report");
+            void props.view.refresh();
+          },
+          onManualPaste: requestPaste
+        });
+      }
+    }), _el$5);
+    _$insert3(_el$5, (() => {
+      var _c$ = _$memo3(() => mode() === "login");
+      return () => _c$() ? "Esc \u53D6\u6D88\uFF08\u4F1A\u5173\u95ED\u672C\u6B21\u542F\u52A8\u7684\u6D4F\u89C8\u5668\uFF09" : `${props.view.refreshing() ? "\u5237\u65B0\u4E2D\u2026 \xB7 " : ""}a \u6388\u6743/\u91CD\u65B0\u6388\u6743 \xB7 d \u9000\u51FA\u767B\u5F55 \xB7 \u2191\u2193 \u6EDA\u52A8 \xB7 Esc \u5173\u95ED`;
+    })());
+    _$effect3((_p$) => {
+      var _v$ = TextAttributes.BOLD, _v$2 = theme().text.base, _v$3 = theme().text.muted;
+      _v$ !== _p$.e && (_p$.e = _$setProp3(_el$4, "attributes", _v$, _p$.e));
+      _v$2 !== _p$.t && (_p$.t = _$setProp3(_el$4, "fg", _v$2, _p$.t));
+      _v$3 !== _p$.a && (_p$.a = _$setProp3(_el$5, "fg", _v$3, _p$.a));
+      return _p$;
+    }, {
+      e: void 0,
+      t: void 0,
+      a: void 0
+    });
+    return _el$3;
+  })();
+}
+
+// src/tui/index.tsx
+var PLUGIN_ID = "@te-river/opencode-alibabatokenplan";
+var STEP_REFRESH_GAP_MS = 15e3;
+function openPanel(context, view) {
+  void view.refresh();
+  context.ui.dialog.show(() => _$createComponent4(TokenPlanPanel, {
+    context,
+    view
+  }));
+  context.ui.dialog.set({
+    size: "large"
+  });
+}
+var index_default = Plugin.define({
+  id: PLUGIN_ID,
+  setup(context) {
+    if (!context || !context.keymap) return () => {
+    };
+    const view = createTokenPlanView();
+    const disposeSidebar = context.ui.slot({
+      append: "sidebar.content",
+      render: () => _$createComponent4(SidebarView, {
+        context,
+        view
+      })
+    });
+    const disposeHome = context.ui.slot({
+      append: "home.footer.status",
+      render: () => _$createComponent4(FooterView, {
+        context,
+        view
+      })
+    });
+    const disposePromptFooter = context.ui.slot({
+      append: "prompt.footer.status",
+      render: () => _$createComponent4(FooterView, {
+        context,
+        view
+      })
+    });
+    context.keymap.layer(() => ({
+      mode: "global",
+      commands: [{
+        id: "tokenplan.open",
+        title: "Token Plan \u989D\u5EA6\u4E0E\u4F18\u60E0",
+        group: "Token Plan",
+        palette: true,
+        slash: {
+          name: "tokenplan"
+        },
+        // 同步返回：返回 Promise 会被宿主当成"已处理"。
+        run: () => openPanel(context, view)
+      }]
+    }));
+    let lastStepRefresh = 0;
+    const stopSteps = context.data.on("session.step.ended", () => {
+      const at = Date.now();
+      if (at - lastStepRefresh < STEP_REFRESH_GAP_MS) return;
+      lastStepRefresh = at;
+      void view.refresh();
+    });
+    return () => {
+      stopSteps();
+      disposePromptFooter();
+      disposeHome();
+      disposeSidebar();
+      view.dispose();
+    };
+  }
+});
 export {
-  AliBabaTokenPlanTui,
   index_default as default
 };

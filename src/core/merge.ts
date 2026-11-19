@@ -1,69 +1,29 @@
-// 统一优惠模型合并（03-D2）：别名归一 → 目录→Offer 转换 → 去重合并 → 优先级排序。
-// 两套单位永不互算：credits-factor(Qoder Credits 倍率) 与 cny-price(百炼 ¥ 价格倍率)
-// 各居其 facet；合并前多 model 规则拆 per-model（m1），仅当 (kind, model, 窗口, factor, unit)
-// 全等才合并（origins 并集=双源印证）。
+// 统一优惠模型合并（03-D2）：目录→Offer 转换 → 去重合并 → 优先级排序。
+// 0.1.4：移除 Qoder 快照，优惠数据仅来自阿里云百炼 Token Plan。
+// 合并前多 model 规则拆 per-model（m1），仅当 (kind, model, 窗口, factor, unit)
+// 全等才合并（origins 并集=多源印证）。
 
 import type { ModelEntry, OfferOrigin, OfferRule } from "./types";
-import { BAILIAN_WINDOW_RULES } from "./bailian-snapshot";
 
-/** 契约 §1 别名表：Qoder 生态内 alias → canonical（仅同生态精确字符串匹配）。 */
-export const MODEL_ALIASES: Record<string, string> = {
-  qmodel_38max: "qwen3.8-max",
-  qmodel_latest: "qwen3.7-max",
-  qmodel: "qwen3.7-plus",
-  qfmodel: "qwen3.8-flash",
-  q37fmodel: "qwen3.7-flash",
-  dmodel: "deepseek-v4-pro",
-  gmodel: "glm-5.3",
-  gfmodel: "glm-5.3-flash",
-  gm51model: "glm-5.2",
-  kmodel: "kimi-k2.7-code",
-  mmodel: "minimax-m2.7",
-};
-
-/** 小写 + 别名归一。禁止与百炼目录行强行 join，除非小写全等。 */
+/** 小写归一。 */
 export function canonicalize(model: string): string {
-  const k = String(model || "").toLowerCase();
-  return MODEL_ALIASES[k] ?? k;
+  return String(model || "").toLowerCase();
 }
 
-/** 展示优先级：bailian-live > bailian-cli > qoder-snapshot > bailian-snapshot（03-D2c） */
+/** 展示优先级：bailian-live > bailian-cli > bailian-snapshot */
 export function originRank(origin: OfferOrigin): number {
-  return { "bailian-live": 0, "bailian-cli": 1, "qoder-snapshot": 2, "bailian-snapshot": 3 }[origin];
+  return { "bailian-live": 0, "bailian-cli": 1, "bailian-snapshot": 2 }[origin];
 }
-
-const OFFPEAK_WINDOW = { start: "22:00", end: "08:00", tz: "Asia/Shanghai" };
 
 /**
- * 百炼目录（live/cli/snapshot 任一源）→ OfferRule[]：
- * (a) offpeak 档模型 → time-window(cny-price, ×0.5)；
- * (b) 普通 input 带 discount<1 → flat-cut(cny-price, 限时系数)；
- * (c) batch 维度 discount<1 → 叠加系数 batchCombined=模型×Batch（03/D2c），记在 note+batchStack。
+ * 目录仅补充普通限时/Batch 降价；时窗唯一来自实时官方文档，避免静态价格目录再造夜间优惠。
+ * 已有文档时窗的模型不再派生 flat-cut，保持窗口/限时互斥。
  */
-export function catalogToOffers(models: ModelEntry[], origin: OfferOrigin, snapshotDate?: string): OfferRule[] {
+export function catalogToOffers(models: ModelEntry[], origin: OfferOrigin, snapshotDate?: string, documentRules: OfferRule[] = []): OfferRule[] {
   const out: OfferRule[] = [];
-  const offpeakModels = models.filter((m) => m.prices.some((p) => p.band === "offpeak")).map((m) => m.model.toLowerCase());
-  if (offpeakModels.length) {
-    out.push({
-      id: "catalog-offpeak",
-      kind: "time-window",
-      label: "目录夜间优惠（错峰 5 折）",
-      models: offpeakModels,
-      unit: "cny-price",
-      factor: 0.5,
-      window: { ...OFFPEAK_WINDOW },
-      note: "目录含 offpeak 档的模型，谷时价=峰时 5 折",
-      links: [],
-      origins: [origin],
-      ...(snapshotDate ? { snapshotDate } : {}),
-    });
-  }
-  // m2：跳过集 = 模型已存在任一 time-window offer（目录 offpeak 档产出的 catalog-offpeak
-  // ∪ 官方文档窗口规则 BAILIAN_WINDOW_RULES）→ 保住旧 428 行「窗口/限时互斥」语义，不漂移。
-  const windowedModels = new Set<string>([
-    ...out.filter((o) => o.kind === "time-window").flatMap((o) => o.models.map((m) => m.toLowerCase())),
-    ...BAILIAN_WINDOW_RULES.flatMap((r) => r.models.map((m) => m.toLowerCase())),
-  ]);
+  const windowedModels = new Set<string>(
+    documentRules.filter((rule) => rule.kind === "time-window").flatMap((rule) => rule.models.map((model) => model.toLowerCase())),
+  );
   for (const m of models) {
     const model = m.model.toLowerCase();
     if (windowedModels.has(model)) continue; // 已有 time-window offer → 不再出限时型
@@ -109,7 +69,7 @@ function explodePerModel(rules: OfferRule[]): OfferRule[] {
   return out;
 }
 
-/** 去重合并 + 优先级排序。同 key（per-model 全等）→ origins/links 并集（双源印证行）。 */
+/** 去重合并 + 优先级排序。同 key（per-model 全等）→ origins/links 并集。 */
 export function mergeOffers(all: OfferRule[]): OfferRule[] {
   const byKey = new Map<string, OfferRule>();
   for (const r of explodePerModel(all)) {
@@ -138,11 +98,4 @@ export function mergeOffers(all: OfferRule[]): OfferRule[] {
     return a.id.localeCompare(b.id);
   });
   return list;
-}
-
-/** origins 同时含 Qoder 与百炼系 → 「双源印证」徽标（展示层判定）。 */
-export function isCrossVerified(r: { origins: OfferOrigin[] }): boolean {
-  const hasQ = r.origins.includes("qoder-snapshot");
-  const hasB = r.origins.some((o) => o.startsWith("bailian-"));
-  return hasQ && hasB;
 }

@@ -21,36 +21,6 @@ export const TOKEN_PLAN_TEXT_MODELS = [
   "deepseek-v4-pro-0813",
 ];
 
-// 官方文档确认的窗口型优惠（时间均为北京时间）。数据源=bailian-snapshot。
-export const BAILIAN_WINDOW_RULES: {
-  id: string;
-  label: string;
-  models: string[];
-  factor: number;
-  start: string;
-  end: string;
-  source: string;
-}[] = [
-  {
-    id: "night-qwen38-max",
-    label: "Token Plan 夜间五折",
-    models: ["qwen3.8-max"],
-    factor: 0.5,
-    start: "22:00",
-    end: "08:00",
-    source: "官方文档 · Token Plan（个人版）概述",
-  },
-  {
-    id: "night-deepseek-v4-pro",
-    label: "Token Plan 夜间五折",
-    models: ["deepseek-v4-pro-0813"],
-    factor: 0.5,
-    start: "22:00",
-    end: "08:00",
-    source: "官方文档 · Token Plan（个人版）概述",
-  },
-];
-
 export function bailianSnapshotModels(): ModelEntry[] {
   const P = (name: string, type: string, price: number, unit = "每百万tokens", band?: string, discount?: number): PriceEntry =>
     ({ name, type, price, unit, ...(band ? { band } : {}), ...(discount !== undefined ? { discount } : {}) });
