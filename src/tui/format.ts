@@ -43,8 +43,21 @@ export function quotaSeverity(usedPercent: number | null | undefined): QuotaSeve
   return "success";
 }
 
-/** 语义色 → 终端命名色：主题 feedback 解析成白色/不可用（与正文色相同）时用它兜底，不硬编码 hex。 */
-const NAMED_SEVERITY_FG: Record<QuotaSeverity, string> = { success: "green", warning: "yellow", error: "red" };
+/** 语义色 → 回退色板（主题值不可用时的 hex）：渲染器只认主题同款的十六进制，命名色不生效。 */
+export const PALETTE = {
+  base: "#FFFFFF",
+  muted: "#7F848E",
+  success: "#98C379",
+  warning: "#E5C07B",
+  error: "#E06C75",
+  cyan: "#56B6C2",
+} as const;
+
+const NAMED_SEVERITY_FG: Record<QuotaSeverity, string> = {
+  success: PALETTE.success,
+  warning: PALETTE.warning,
+  error: PALETTE.error,
+};
 
 /**
  * 颜色归一化：主题解析值可能不是字符串（如 RGBA 对象），直接塞给 `fg` 会让渲染器
@@ -84,7 +97,7 @@ function isWashedOut(color: string): boolean {
 /** 语义等级的取色：主题 feedback 优先；缺失、非字符串、等于正文色或近白/近灰时 → 命名色。 */
 export function quotaSeverityFg(theme: Theme, severity: QuotaSeverity | null | undefined): string {
   const feedback = theme.text.feedback;
-  const base = colorString(theme.text.base, "white");
+  const base = colorString(theme.text.base, PALETTE.base);
   const raw =
     severity === "error"
       ? feedback?.error?.base
@@ -104,10 +117,10 @@ export function quotaSeverityFg(theme: Theme, severity: QuotaSeverity | null | u
  */
 export function overlayFg(theme: Theme, period: "week" | "fiveHour"): string {
   const feedback = theme.text.feedback;
-  const base = colorString(theme.text.base, "white");
+  const base = colorString(theme.text.base, PALETTE.base);
   const preferred = colorString(period === "fiveHour" ? feedback?.info?.base : feedback?.warning?.base, "");
   if (preferred && preferred !== base) return preferred;
-  return period === "fiveHour" ? "cyan" : "yellow";
+  return period === "fiveHour" ? PALETTE.cyan : PALETTE.warning;
 }
 
 // 额度句里的「长条 + 百分比」段：条由 █/▒/░ 组成；百分比可带「剩 」前缀，一位小数（84.0%），整数写法（84%）也兼容。

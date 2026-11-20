@@ -914,10 +914,10 @@ test("colorString：非字符串/空白色值一律回退，绝不把对象传�
   for (const fg of [quotaSeverityFg(broken, "warning"), quotaSeverityFg(broken, null), overlayFg(broken, "week"), overlayFg(broken, "fiveHour")]) {
     assert.equal(typeof fg, "string");
   }
-  assert.equal(quotaSeverityFg(broken, "warning"), "yellow");
-  assert.equal(quotaSeverityFg(broken, null), "white");
-  assert.equal(overlayFg(broken, "week"), "yellow");
-  assert.equal(overlayFg(broken, "fiveHour"), "cyan");
+  assert.equal(quotaSeverityFg(broken, "warning"), "#E5C07B");
+  assert.equal(quotaSeverityFg(broken, null), "#FFFFFF");
+  assert.equal(overlayFg(broken, "week"), "#E5C07B");
+  assert.equal(overlayFg(broken, "fiveHour"), "#56B6C2");
   // 正常字符串原样
   const ok = { text: { base: "#ffffff", feedback: { warning: { base: "#e5c07b" } } } };
   assert.equal(quotaSeverityFg(ok, "warning"), "#e5c07b");
@@ -926,8 +926,8 @@ test("colorString：非字符串/空白色值一律回退，绝不把对象传�
 
 test("overlayFg：7 天叠加段黄、5h 叠加段青，两者不同色（主题缺 info 时用命名色）", () => {
   const bare = { text: { base: "#ffffff", feedback: { warning: { base: "#ffffff" } } } };
-  assert.equal(overlayFg(bare, "week"), "yellow");
-  assert.equal(overlayFg(bare, "fiveHour"), "cyan");
+  assert.equal(overlayFg(bare, "week"), "#E5C07B");
+  assert.equal(overlayFg(bare, "fiveHour"), "#56B6C2");
   assert.notEqual(overlayFg(bare, "week"), overlayFg(bare, "fiveHour"));
   // 主题定义了 feedback 就用主题色
   const themed = { text: { base: "#ffffff", feedback: { warning: { base: "#e5c07b" }, info: { base: "#56b6c2" } } } };
@@ -939,8 +939,8 @@ test("overlayFg：7 天叠加段黄、5h 叠加段青，两者不同色（主题
     barSegments(bar)
       .filter((segment) => segment.kind === "period")
       .map(() => overlayFg(bare, period));
-  assert.deepEqual(colorsFor("week"), ["yellow"]);
-  assert.deepEqual(colorsFor("fiveHour"), ["cyan"]);
+  assert.deepEqual(colorsFor("week"), ["#E5C07B"]);
+  assert.deepEqual(colorsFor("fiveHour"), ["#56B6C2"]);
   assert.notDeepEqual(colorsFor("week"), colorsFor("fiveHour"));
 });
 
@@ -957,9 +957,9 @@ test("quotaSeverityFg：主题 feedback 优先；近白/近灰/缺省时回退�
     text: { base: "#ffffff", feedback: { warning: { base: warningBase } } },
   });
   // 近白（不是与 text.base 完全相等）也要回退
-  assert.equal(quotaSeverityFg(theme("#f5f5f5"), "warning"), "yellow");
-  assert.equal(quotaSeverityFg(theme("#ffffff"), "warning"), "yellow");
-  assert.equal(quotaSeverityFg(theme(undefined), "warning"), "yellow");
+  assert.equal(quotaSeverityFg(theme("#f5f5f5"), "warning"), "#E5C07B");
+  assert.equal(quotaSeverityFg(theme("#ffffff"), "warning"), "#E5C07B");
+  assert.equal(quotaSeverityFg(theme(undefined), "warning"), "#E5C07B");
   assert.equal(quotaSeverityFg(theme("#e5c07b"), "warning"), "#e5c07b"); // 饱和色原样
   assert.equal(quotaSeverityFg(theme("rgb(229, 192, 123)"), "warning"), "rgb(229, 192, 123)");
   // success/error 的饱和色也原样返回
@@ -969,7 +969,7 @@ test("quotaSeverityFg：主题 feedback 优先；近白/近灰/缺省时回退�
   // 无效档位 → 正文色
   assert.equal(quotaSeverityFg(theme("#e5c07b"), null), "#ffffff");
   // 近灰（低色度且高亮度）
-  assert.equal(quotaSeverityFg({ text: { base: "#ffffff", feedback: { warning: { base: "rgb(230, 228, 226)" } } } }, "warning"), "yellow");
+  assert.equal(quotaSeverityFg({ text: { base: "#ffffff", feedback: { warning: { base: "rgb(230, 228, 226)" } } } }, "warning"), "#E5C07B");
 });
 
 test("quotaRows：月用量行后依次是近7天消耗 / 近5h消耗 灰色行（同单位同顺序）", () => {
