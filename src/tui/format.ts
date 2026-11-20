@@ -110,8 +110,8 @@ export function overlayFg(theme: Theme, period: "week" | "fiveHour"): string {
   return period === "fiveHour" ? "cyan" : "yellow";
 }
 
-// 额度句里的「长条 + 百分比」段：条由 █/▒/░ 组成，百分比是一位小数（84.0%），整数写法（84%）也兼容。
-const METER = /^(.*?)([█▒░]{16} \d+(?:\.\d+)?%)(.*)$/;
+// 额度句里的「长条 + 百分比」段：条由 █/▒/░ 组成；百分比可带「剩 」前缀，一位小数（84.0%），整数写法（84%）也兼容。
+const METER = /^(.*?)([█▒░]{16} (?:剩 )?\d+(?:\.\d+)?%)(.*)$/;
 
 /** 把额度句切成 [前缀, 长条+百分比, 后缀]；不是额度句 → null（视图据此决定是否上语义色）。 */
 export function splitMeter(line: string): [string, string, string] | null {
@@ -264,7 +264,8 @@ export function quotaLines(quota: QuotaSnapshot, nowMs: number, series?: UsageSe
       ? `重置 ${view.resetTime}`
       : "";
   const total = tokenTotal(series?.tokensMonth);
-  const value = [usageBar(view.usedPercent), percent(view.usedPercent), total].filter(Boolean).join(" ");
+  // 百分比显示剩余（与实心未用块一致），不带前缀；Token 合计照旧跟在后面。
+  const value = [usageBar(view.usedPercent), percent(remainingOf(view.usedPercent)), total].filter(Boolean).join(" ");
   return [reset ? `${MONTH_LABEL} · ${reset}` : MONTH_LABEL, value];
 }
 
@@ -388,15 +389,20 @@ export function quotaRows(quota: QuotaSnapshot, nowMs: number, periods?: TokenPl
         ? `重置 ${view.resetTime}`
         : "";
     const monthTotal = tokenTotal(series?.tokensMonth);
-    // 面板行宽有限：bar 收到 10 格，百分比紧跟其后（`84.0% 已用`），再用 ` · ` 分段；
-    // 超预算时先丢「剩 …%」，保住百分比与合计。
-    const head = [usageBar(view.usedPercent, 10), `${percent(view.usedPercent)} 已用`].filter(Boolean).join(" ");
-    const rest = [`剩 ${percent(remainingOf(view.usedPercent))}`, reset, monthTotal ? `合计 ${monthTotal}` : ""].filter(Boolean);
+    // 面板行宽有限：bar 10 格，先「剩」后「已用」（与条语义一致）；超预算时先丢「已用」。
+    const head = usageBar(view.usedPercent, 10);
+    const rest = [
+      `剩 ${percent(remainingOf(view.usedPercent))}`,
+      `已用 ${percent(view.usedPercent)}`,
+      reset,
+      monthTotal ? `合计 ${monthTotal}` : "",
+    ].filter(Boolean);
     const PANEL_ROW_BUDGET = 64;
-    const value = [head, ...rest].join(" · ");
+    const full = [head, ...rest].join(" · ");
+    const value = full.length > PANEL_ROW_BUDGET && rest.length > 2 ? [head, rest[0], ...rest.slice(2)].join(" · ") : full;
     rows.push({
       label: `${windowLabel(view.window)}用量`,
-      value: value.length > PANEL_ROW_BUDGET && rest.length > 1 ? [head, ...rest.slice(1)].join(" · ") : value,
+      value,
       severity: quotaSeverity(view.usedPercent) ?? undefined,
     });
     if (periods) {

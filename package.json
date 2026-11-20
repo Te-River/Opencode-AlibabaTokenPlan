@@ -1,6 +1,6 @@
 {
   "name": "@te-river/opencode-alibabatokenplan",
-  "version": "0.2.18",
+  "version": "0.2.19",
   "description": "OpenCode v2 TUI plugin: Aliyun Bailian Token Plan personal quota and discount windows in one panel.",
   "type": "module",
   "exports": {

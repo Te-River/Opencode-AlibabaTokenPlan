@@ -497,7 +497,7 @@ test("sidebarLines：qwen 不足三个时用其他品牌按折数升序补齐，
   ];
   const lines = sidebarLines(status, now.getTime());
   assert.match(lines[0], /^月额度 · .+ 后重置$/);
-  assert.match(lines[1], /^[█░]{16} 50\.0%$/);
+  assert.match(lines[1], /^[█▒░]{16} 50\.0%$/);
   assert.match(lines[2], /^夜间 .+ 后结束$/);
   assert.equal(lines.length, 6); // 月2 + 倒计时 + 3 模型
   assert.equal(lines[3], "qwen3.8-max 4 折");
@@ -797,7 +797,7 @@ test("sidebarLines：月额度 / 近7天消耗 / 近5h消耗 各自两行（标�
   const lines = sidebarLines(buildMergedStatus(usageQuota, now, officialDocument, sampledPeriods, usageSeries), now.getTime());
   assert.deepEqual(lines, [
     "月额度 · 1d0h 后重置",
-    usageBar(82.6) + " 82.6% 860.92M Token", // 月合计 Token 全称，直接跟在百分比后
+    usageBar(82.6) + " 17.4% 860.92M Token", // 百分比是剩余值（无前缀），与实心未用块一致
     lines[2], // 夜间倒计时（下面单独断言格式）
     "qwen4-max-preview 0.8 折",
     "qwen3.8-flash 4 折",
@@ -845,7 +845,7 @@ test("sidebarLines：月额度 / 近7天消耗 / 近5h消耗 各自两行（标�
     buildMergedStatus(usageQuota, now, officialDocument, sampledPeriods, { fetchedAt: SERIES_NOW, tokens7d: 106_040_000, tokens5h: 1_200_000, source: "server" }),
     now.getTime(),
   );
-  assert.equal(noMonth[1], usageBar(82.6) + " 82.6%");
+  assert.equal(noMonth[1], usageBar(82.6) + " 17.4%");
   // 加购行在最末（近5h 之后）
   const withAddon = buildMergedStatus(
     { ...usageQuota, addon: { totalCredits: 2000, remainingCredits: 1800, activeCount: null, usedPercent: 10 } },
@@ -867,7 +867,8 @@ test("isQuotaMeterLine：月额度值行按内容识别（不受行号影响）�
   assert.equal(lines[0].startsWith("月额度"), true); // 标签行在第 0 行
   assert.equal(isQuotaMeterLine(lines[0]), false);
   assert.equal(isQuotaMeterLine(lines[1]), true); // 值行在第 1 行，必须识别为 meter
-  assert.match(lines[1], /^[█░]{16} 82\.6% 860\.92M Token$/);
+  assert.match(lines[1], /^[█▒░]{16} 17\.4% 860\.92M Token$/);
+  assert.ok(!lines[1].includes("剩 "));
   assert.equal(isQuotaMeterLine(lines[7]), false); // 近7天消耗 标签
   assert.equal(isQuotaMeterLine(lines[8]), false); // 周期值行（带 `-N.N%`）
   assert.equal(isQuotaMeterLine(lines[11]), false); // 5h 值行
@@ -887,8 +888,8 @@ test("remainingOf：剩余一律由已用推导（round1(100−used)），已用
   const drift = { window: "month", usedPercent: 84.04, remainingPercent: 15.9, resetTime: null, resetAtMs: null };
   const status = buildMergedStatus({ ...noQuota, ok: true, error: null, window: drift }, new Date(SERIES_NOW));
   const usage = quotaRows(status.quota, SERIES_NOW).find((row) => row.label === "月用量");
-  assert.ok(usage.value.includes("84.0% 已用"));
   assert.ok(usage.value.includes("剩 16.0%"));
+  assert.ok(usage.value.includes("已用 84.0%"));
   assert.equal(footerLine(status).includes("剩 16.0%"), true);
   assert.ok(!usage.value.includes("剩 15.9%"));
 });
@@ -978,7 +979,7 @@ test("quotaRows：月用量行后依次是近7天消耗 / 近5h消耗 灰色行�
   assert.equal(labels[monthIndex + 1], "近7天消耗");
   assert.equal(labels[monthIndex + 2], "近5h消耗");
   assert.equal(rows[monthIndex].value.includes("合计 860.92M Token"), true);
-  assert.ok(rows[monthIndex].value.startsWith(usageBar(82.6, 10) + " 82.6% 已用")); // 百分比在 bar 之后且完整
+  assert.ok(rows[monthIndex].value.startsWith(usageBar(82.6, 10) + " · 剩 17.4% · 已用 82.6%")); // 先剩后已用，与条语义一致
   assert.ok(rows[monthIndex].value.includes("剩 17.4%"));
   assert.equal(rows[monthIndex + 1].muted, true);
   assert.equal(rows[monthIndex + 1].value, segmentedBar(82.6, 72.6) + " -72.6% 106.04M Token");
@@ -1410,13 +1411,14 @@ test("usageBar：真实合并快照的侧栏与月用量行均含长条和已用
   const merged = buildMergedStatus(quota, now);
   const lines = sidebarLines(merged, now.getTime());
   assert.equal(lines[0].startsWith("月额度"), true); // 标签行
-  const headline = lines[1]; // 值行：bar16 + 82.6%
+  const headline = lines[1]; // 值行：bar16 + 17.4%（剩余）
   assert.ok(headline.includes("███")); // 未用段（实心）
-  assert.ok(headline.includes("82.6%"));
-  assert.match(headline, /^[█▒░]{16} 82\.6%$/);
+  assert.ok(headline.includes("17.4%"));
+  assert.ok(!headline.includes("剩 "));
+  assert.match(headline, /^[█▒░]{16} 17\.4%$/);
   const usage = quotaRows(quota, now.getTime()).find((row) => row.label === "月用量");
   assert.ok(usage);
-  assert.match(usage.value, /^[█░]{10} 82\.6% 已用/); // 已用块锚定右端（前面是空轨）
+  assert.match(usage.value, /^[█▒░]{10} · 剩 17\.4% · 已用 82\.6%/); // 面板：先剩后已用
 });
 
 test("sidebarLines：真实额度 + 真实文档时首行是额度长条，其后模型行 ≤3 且全为 qwen", async () => {

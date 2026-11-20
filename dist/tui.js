@@ -2190,7 +2190,7 @@ function overlayFg(theme, period) {
   if (preferred && preferred !== base) return preferred;
   return period === "fiveHour" ? "cyan" : "yellow";
 }
-var METER = /^(.*?)([█▒░]{16} \d+(?:\.\d+)?%)(.*)$/;
+var METER = /^(.*?)([█▒░]{16} (?:剩 )?\d+(?:\.\d+)?%)(.*)$/;
 function splitMeter(line) {
   const parts = METER.exec(line);
   return parts ? [parts[1], parts[2], parts[3]] : null;
@@ -2275,7 +2275,7 @@ function quotaLines(quota, nowMs, series) {
   const left = view.resetAtMs === null ? null : view.resetAtMs - nowMs;
   const reset = left !== null && left > 0 ? `${fmtShortDur(left)} \u540E\u91CD\u7F6E` : view.resetTime ? `\u91CD\u7F6E ${view.resetTime}` : "";
   const total = tokenTotal(series?.tokensMonth);
-  const value = [usageBar(view.usedPercent), percent(view.usedPercent), total].filter(Boolean).join(" ");
+  const value = [usageBar(view.usedPercent), percent(remainingOf(view.usedPercent)), total].filter(Boolean).join(" ");
   return [reset ? `${MONTH_LABEL} \xB7 ${reset}` : MONTH_LABEL, value];
 }
 function tierOf(model) {
@@ -2360,13 +2360,19 @@ function quotaRows(quota, nowMs, periods, series) {
     const left = view.resetAtMs === null ? null : view.resetAtMs - nowMs;
     const reset = left !== null && left > 0 ? `${fmtShortDur(left)} \u540E\u91CD\u7F6E` : view.resetTime ? `\u91CD\u7F6E ${view.resetTime}` : "";
     const monthTotal = tokenTotal(series?.tokensMonth);
-    const head = [usageBar(view.usedPercent, 10), `${percent(view.usedPercent)} \u5DF2\u7528`].filter(Boolean).join(" ");
-    const rest = [`\u5269 ${percent(remainingOf(view.usedPercent))}`, reset, monthTotal ? `\u5408\u8BA1 ${monthTotal}` : ""].filter(Boolean);
+    const head = usageBar(view.usedPercent, 10);
+    const rest = [
+      `\u5269 ${percent(remainingOf(view.usedPercent))}`,
+      `\u5DF2\u7528 ${percent(view.usedPercent)}`,
+      reset,
+      monthTotal ? `\u5408\u8BA1 ${monthTotal}` : ""
+    ].filter(Boolean);
     const PANEL_ROW_BUDGET = 64;
-    const value = [head, ...rest].join(" \xB7 ");
+    const full = [head, ...rest].join(" \xB7 ");
+    const value = full.length > PANEL_ROW_BUDGET && rest.length > 2 ? [head, rest[0], ...rest.slice(2)].join(" \xB7 ") : full;
     rows.push({
       label: `${windowLabel2(view.window)}\u7528\u91CF`,
-      value: value.length > PANEL_ROW_BUDGET && rest.length > 1 ? [head, ...rest.slice(1)].join(" \xB7 ") : value,
+      value,
       severity: quotaSeverity(view.usedPercent) ?? void 0
     });
     if (periods) {
@@ -2960,7 +2966,7 @@ function TokenPlanPanel(props) {
     _$setProp3(_el$3, "flexDirection", "column");
     _$setProp3(_el$3, "paddingLeft", 2);
     _$setProp3(_el$3, "paddingRight", 2);
-    _$insert3(_el$4, () => mode() === "login" ? "Token Plan \u6388\u6743" : `Token Plan \u989D\u5EA6\u4E0E\u4F18\u60E0 \xB7 v${"0.2.18"}`);
+    _$insert3(_el$4, () => mode() === "login" ? "Token Plan \u6388\u6743" : `Token Plan \u989D\u5EA6\u4E0E\u4F18\u60E0 \xB7 v${"0.2.19"}`);
     _$insert3(_el$3, _$createComponent3(Show3, {
       get when() {
         return notice();
