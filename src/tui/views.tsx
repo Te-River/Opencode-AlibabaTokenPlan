@@ -20,13 +20,7 @@ import {
 
 type Theme = TuiContext["theme"];
 
-/**
- * span 的取色属性。@opentui/solid 的 SpanProps 声明成 ComponentProps<{}, …>，漏了
- * TextNodeOptions 的 fg；运行期 props 直接进 SpanRenderable→TextNodeRenderable 构造器，
- * 所以把 fg 塞进 style 对象会被静默丢弃，必须作为顶层 props 传下去（这里绕过类型声明）。
- */
-export const spanFg = (fg: string): Record<string, string> => ({ fg });
-
+/** 多色行用「同级多个 <text> + flexDirection:row」实现：该渲染器里嵌套 span 的 fg 不生效。 */
 function QuotaLine(props: { theme: Theme; line: string; usedPercent: number | null | undefined }) {
   const base = colorString(props.theme.text.base, PALETTE.base);
   const parts = splitMeter(props.line);
@@ -39,11 +33,11 @@ function QuotaLine(props: { theme: Theme; line: string; usedPercent: number | nu
   }
   const meterFg = quotaSeverityFg(props.theme, quotaSeverity(props.usedPercent));
   return (
-    <text fg={base} wrapMode="none">
-      <span {...spanFg(base)}>{parts[0]}</span>
-      <span {...spanFg(meterFg)}>{parts[1]}</span>
-      <span {...spanFg(base)}>{parts[2]}</span>
-    </text>
+    <box flexDirection="row">
+      <text fg={base} wrapMode="none">{parts[0]}</text>
+      <text fg={meterFg} wrapMode="none">{parts[1]}</text>
+      <text fg={base} wrapMode="none">{parts[2]}</text>
+    </box>
   );
 }
 
@@ -65,22 +59,19 @@ function PeriodLine(props: { theme: Theme; line: string; overlay: "week" | "five
   const accent = overlayFg(props.theme, props.overlay);
   const rest = props.line.slice(parts[1].length);
   return (
-    <text fg={muted} wrapMode="none">
+    <box flexDirection="row">
       <For each={barSegments(parts[1])}>
-        {(segment) =>
-          segment.kind === "period" ? (
-            <span {...spanFg(accent)}>{segment.text}</span>
-          ) : segment.kind === "unused" ? (
-            // 未用段：实心亮色
-            <span {...spanFg(base)}>{segment.text}</span>
-          ) : (
-            // 已用段（░）：虚、灰
-            <span {...spanFg(muted)}>{segment.text}</span>
-          )
-        }
+        {(segment) => (
+          <text
+            fg={segment.kind === "period" ? accent : segment.kind === "unused" ? base : muted}
+            wrapMode="none"
+          >
+            {segment.text}
+          </text>
+        )}
       </For>
-      <span {...spanFg(muted)}>{rest}</span>
-    </text>
+      <text fg={muted} wrapMode="none">{rest}</text>
+    </box>
   );
 }
 

@@ -8,7 +8,6 @@ import type { TuiContext } from "./context";
 import type { TokenPlanView } from "./state";
 import { createClock } from "./state";
 import { colorString, discountRows, PALETTE, quotaRows, quotaSeverityFg, rowLabelText, type Row } from "./format";
-import { spanFg } from "./views";
 import { LoginFlow, loginSuccessNotice, type LoginStorage } from "./login";
 import { forgetCredential, submitManualCookie } from "../core/quota/credentials";
 
@@ -20,12 +19,13 @@ function RowLine(props: { row: Row; mutedFg: string; baseFg: string; valueFg?: s
   const mutedFg = colorString(props.mutedFg, PALETTE.muted);
   const baseFg = colorString(props.baseFg, PALETTE.base);
   const valueFg = colorString(props.valueFg, baseFg);
+  // 嵌套 span 的 fg 在该渲染器不生效：label 与 value 用同级 <text>，各自上色。
   // truncate：wrapMode="none" 的长行（优惠窗口那行有 4 段）按行宽尾部裁掉，不越出面板边界。
   return (
-    <text wrapMode="none" truncate fg={props.row.muted ? mutedFg : valueFg}>
-      <span {...spanFg(mutedFg)}>{rowLabelText(props.row.label)}</span>
-      {props.row.value}
-    </text>
+    <box flexDirection="row">
+      <text fg={mutedFg} wrapMode="none" truncate>{rowLabelText(props.row.label)}</text>
+      <text fg={props.row.muted ? mutedFg : valueFg} wrapMode="none" truncate>{props.row.value}</text>
+    </box>
   );
 }
 

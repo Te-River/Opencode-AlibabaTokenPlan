@@ -2125,12 +2125,10 @@ function createClock(intervalMs = 1e3) {
 }
 
 // src/tui/views.tsx
-import { effect as _$effect } from "@opentui/solid";
 import { memo as _$memo } from "@opentui/solid";
+import { effect as _$effect } from "@opentui/solid";
 import { createComponent as _$createComponent } from "@opentui/solid";
 import { insertNode as _$insertNode } from "@opentui/solid";
-import { spread as _$spread } from "@opentui/solid";
-import { mergeProps as _$mergeProps } from "@opentui/solid";
 import { insert as _$insert } from "@opentui/solid";
 import { setProp as _$setProp } from "@opentui/solid";
 import { createElement as _$createElement } from "@opentui/solid";
@@ -2428,9 +2426,6 @@ function discountRows(discount, nowMs) {
 }
 
 // src/tui/views.tsx
-var spanFg = (fg) => ({
-  fg
-});
 function QuotaLine(props) {
   const base = colorString(props.theme.text.base, PALETTE.base);
   const parts = splitMeter(props.line);
@@ -2445,17 +2440,19 @@ function QuotaLine(props) {
   }
   const meterFg = quotaSeverityFg(props.theme, quotaSeverity(props.usedPercent));
   return (() => {
-    var _el$2 = _$createElement("text"), _el$3 = _$createElement("span"), _el$4 = _$createElement("span"), _el$5 = _$createElement("span");
+    var _el$2 = _$createElement("box"), _el$3 = _$createElement("text"), _el$4 = _$createElement("text"), _el$5 = _$createElement("text");
     _$insertNode(_el$2, _el$3);
     _$insertNode(_el$2, _el$4);
     _$insertNode(_el$2, _el$5);
-    _$setProp(_el$2, "fg", base);
-    _$setProp(_el$2, "wrapMode", "none");
-    _$spread(_el$3, _$mergeProps(() => spanFg(base)), true);
+    _$setProp(_el$2, "flexDirection", "row");
+    _$setProp(_el$3, "fg", base);
+    _$setProp(_el$3, "wrapMode", "none");
     _$insert(_el$3, () => parts[0]);
-    _$spread(_el$4, _$mergeProps(() => spanFg(meterFg)), true);
+    _$setProp(_el$4, "fg", meterFg);
+    _$setProp(_el$4, "wrapMode", "none");
     _$insert(_el$4, () => parts[1]);
-    _$spread(_el$5, _$mergeProps(() => spanFg(base)), true);
+    _$setProp(_el$5, "fg", base);
+    _$setProp(_el$5, "wrapMode", "none");
     _$insert(_el$5, () => parts[2]);
     return _el$2;
   })();
@@ -2477,38 +2474,23 @@ function PeriodLine(props) {
   const accent = overlayFg(props.theme, props.overlay);
   const rest = props.line.slice(parts[1].length);
   return (() => {
-    var _el$7 = _$createElement("text"), _el$8 = _$createElement("span");
+    var _el$7 = _$createElement("box"), _el$8 = _$createElement("text");
     _$insertNode(_el$7, _el$8);
-    _$setProp(_el$7, "fg", muted);
-    _$setProp(_el$7, "wrapMode", "none");
+    _$setProp(_el$7, "flexDirection", "row");
     _$insert(_el$7, _$createComponent(For, {
       get each() {
         return barSegments(parts[1]);
       },
-      children: (segment) => segment.kind === "period" ? (() => {
-        var _el$9 = _$createElement("span");
-        _$spread(_el$9, _$mergeProps(() => spanFg(accent)), true);
+      children: (segment) => (() => {
+        var _el$9 = _$createElement("text");
+        _$setProp(_el$9, "wrapMode", "none");
         _$insert(_el$9, () => segment.text);
+        _$effect((_$p) => _$setProp(_el$9, "fg", segment.kind === "period" ? accent : segment.kind === "unused" ? base : muted, _$p));
         return _el$9;
-      })() : segment.kind === "unused" ? (
-        // 未用段：实心亮色
-        (() => {
-          var _el$0 = _$createElement("span");
-          _$spread(_el$0, _$mergeProps(() => spanFg(base)), true);
-          _$insert(_el$0, () => segment.text);
-          return _el$0;
-        })()
-      ) : (
-        // 已用段（░）：虚、灰
-        (() => {
-          var _el$1 = _$createElement("span");
-          _$spread(_el$1, _$mergeProps(() => spanFg(muted)), true);
-          _$insert(_el$1, () => segment.text);
-          return _el$1;
-        })()
-      )
+      })()
     }), _el$8);
-    _$spread(_el$8, _$mergeProps(() => spanFg(muted)), true);
+    _$setProp(_el$8, "fg", muted);
+    _$setProp(_el$8, "wrapMode", "none");
     _$insert(_el$8, rest);
     return _el$7;
   })();
@@ -2542,14 +2524,14 @@ function SidebarLine(props) {
   }
   const fg = props.line.startsWith(MONTH_LABEL) ? colorString(props.theme.text.base, PALETTE.base) : colorString(props.theme.text.muted, PALETTE.muted);
   return (() => {
-    var _el$10 = _$createElement("text");
-    _$setProp(_el$10, "fg", fg);
-    _$setProp(_el$10, "wrapMode", "none");
-    _$insert(_el$10, (() => {
+    var _el$0 = _$createElement("text");
+    _$setProp(_el$0, "fg", fg);
+    _$setProp(_el$0, "wrapMode", "none");
+    _$insert(_el$0, (() => {
       var _c$ = _$memo(() => props.line.length > 0);
       return () => _c$() ? props.line : " ";
     })());
-    return _el$10;
+    return _el$0;
   })();
 }
 function SidebarView(props) {
@@ -2560,9 +2542,9 @@ function SidebarView(props) {
     return current ? sidebarLines(current, now()) : [];
   };
   return (() => {
-    var _el$11 = _$createElement("box");
-    _$setProp(_el$11, "flexDirection", "column");
-    _$insert(_el$11, _$createComponent(For, {
+    var _el$1 = _$createElement("box");
+    _$setProp(_el$1, "flexDirection", "column");
+    _$insert(_el$1, _$createComponent(For, {
       get each() {
         return lines();
       },
@@ -2579,7 +2561,7 @@ function SidebarView(props) {
         }
       })
     }));
-    return _el$11;
+    return _el$1;
   })();
 }
 function FooterView(props) {
@@ -2592,11 +2574,11 @@ function FooterView(props) {
       return line().length > 0;
     },
     get children() {
-      var _el$12 = _$createElement("text");
-      _$setProp(_el$12, "wrapMode", "none");
-      _$insert(_el$12, line);
-      _$effect((_$p) => _$setProp(_el$12, "fg", colorString(props.context.theme.text.muted, PALETTE.muted), _$p));
-      return _el$12;
+      var _el$10 = _$createElement("text");
+      _$setProp(_el$10, "wrapMode", "none");
+      _$insert(_el$10, line);
+      _$effect((_$p) => _$setProp(_el$10, "fg", colorString(props.context.theme.text.muted, PALETTE.muted), _$p));
+      return _el$10;
     }
   });
 }
@@ -2609,8 +2591,6 @@ import { createComponent as _$createComponent3 } from "@opentui/solid";
 import { effect as _$effect3 } from "@opentui/solid";
 import { insertNode as _$insertNode3 } from "@opentui/solid";
 import { insert as _$insert3 } from "@opentui/solid";
-import { spread as _$spread2 } from "@opentui/solid";
-import { mergeProps as _$mergeProps2 } from "@opentui/solid";
 import { setProp as _$setProp3 } from "@opentui/solid";
 import { createElement as _$createElement3 } from "@opentui/solid";
 import { For as For3, Show as Show3, createSignal as createSignal3 } from "solid-js";
@@ -2841,14 +2821,18 @@ function RowLine(props) {
   const baseFg = colorString(props.baseFg, PALETTE.base);
   const valueFg = colorString(props.valueFg, baseFg);
   return (() => {
-    var _el$ = _$createElement3("text"), _el$2 = _$createElement3("span");
+    var _el$ = _$createElement3("box"), _el$2 = _$createElement3("text"), _el$3 = _$createElement3("text");
     _$insertNode3(_el$, _el$2);
-    _$setProp3(_el$, "wrapMode", "none");
-    _$setProp3(_el$, "truncate", true);
-    _$spread2(_el$2, _$mergeProps2(() => spanFg(mutedFg)), true);
+    _$insertNode3(_el$, _el$3);
+    _$setProp3(_el$, "flexDirection", "row");
+    _$setProp3(_el$2, "fg", mutedFg);
+    _$setProp3(_el$2, "wrapMode", "none");
+    _$setProp3(_el$2, "truncate", true);
     _$insert3(_el$2, () => rowLabelText(props.row.label));
-    _$insert3(_el$, () => props.row.value, null);
-    _$effect3((_$p) => _$setProp3(_el$, "fg", props.row.muted ? mutedFg : valueFg, _$p));
+    _$setProp3(_el$3, "wrapMode", "none");
+    _$setProp3(_el$3, "truncate", true);
+    _$insert3(_el$3, () => props.row.value);
+    _$effect3((_$p) => _$setProp3(_el$3, "fg", props.row.muted ? mutedFg : valueFg, _$p));
     return _el$;
   })();
 }
@@ -2972,50 +2956,50 @@ function TokenPlanPanel(props) {
     }]
   }));
   return (() => {
-    var _el$3 = _$createElement3("box"), _el$4 = _$createElement3("text"), _el$5 = _$createElement3("text");
-    _$insertNode3(_el$3, _el$4);
-    _$insertNode3(_el$3, _el$5);
-    _$setProp3(_el$3, "flexDirection", "column");
-    _$setProp3(_el$3, "paddingLeft", 2);
-    _$setProp3(_el$3, "paddingRight", 2);
-    _$insert3(_el$4, () => mode() === "login" ? "Token Plan \u6388\u6743" : `Token Plan \u989D\u5EA6\u4E0E\u4F18\u60E0 \xB7 v${"0.2.20"}`);
-    _$insert3(_el$3, _$createComponent3(Show3, {
+    var _el$4 = _$createElement3("box"), _el$5 = _$createElement3("text"), _el$6 = _$createElement3("text");
+    _$insertNode3(_el$4, _el$5);
+    _$insertNode3(_el$4, _el$6);
+    _$setProp3(_el$4, "flexDirection", "column");
+    _$setProp3(_el$4, "paddingLeft", 2);
+    _$setProp3(_el$4, "paddingRight", 2);
+    _$insert3(_el$5, () => mode() === "login" ? "Token Plan \u6388\u6743" : `Token Plan \u989D\u5EA6\u4E0E\u4F18\u60E0 \xB7 v${"0.2.21"}`);
+    _$insert3(_el$4, _$createComponent3(Show3, {
       get when() {
         return notice();
       },
       children: (current) => (() => {
-        var _el$6 = _$createElement3("text");
-        _$insert3(_el$6, () => loginSuccessNotice(current().storage));
-        _$effect3((_$p) => _$setProp3(_el$6, "fg", current().storage === "session" ? colorString(theme().text.feedback?.warning?.base, PALETTE.warning) : colorString(theme().text.base, PALETTE.base), _$p));
-        return _el$6;
+        var _el$7 = _$createElement3("text");
+        _$insert3(_el$7, () => loginSuccessNotice(current().storage));
+        _$effect3((_$p) => _$setProp3(_el$7, "fg", current().storage === "session" ? colorString(theme().text.feedback?.warning?.base, PALETTE.warning) : colorString(theme().text.base, PALETTE.base), _$p));
+        return _el$7;
       })()
-    }), _el$5);
-    _$insert3(_el$3, _$createComponent3(Show3, {
+    }), _el$6);
+    _$insert3(_el$4, _$createComponent3(Show3, {
       get when() {
         return props.view.lastError();
       },
       children: (message) => (() => {
-        var _el$7 = _$createElement3("text"), _el$8 = _$createTextNode2(`\u26A0 `);
-        _$insertNode3(_el$7, _el$8);
-        _$insert3(_el$7, message, null);
-        _$effect3((_$p) => _$setProp3(_el$7, "fg", colorString(theme().text.muted, PALETTE.muted), _$p));
-        return _el$7;
+        var _el$8 = _$createElement3("text"), _el$9 = _$createTextNode2(`\u26A0 `);
+        _$insertNode3(_el$8, _el$9);
+        _$insert3(_el$8, message, null);
+        _$effect3((_$p) => _$setProp3(_el$8, "fg", colorString(theme().text.muted, PALETTE.muted), _$p));
+        return _el$8;
       })()
-    }), _el$5);
-    _$insert3(_el$3, _$createComponent3(Show3, {
+    }), _el$6);
+    _$insert3(_el$4, _$createComponent3(Show3, {
       get when() {
         return mode() === "login";
       },
       get fallback() {
         return (() => {
-          var _el$9 = _$createElement3("scrollbox"), _el$0 = _$createElement3("box"), _el$1 = _$createElement3("text"), _el$11 = _$createElement3("text");
-          _$insertNode3(_el$9, _el$0);
-          _$use((element) => scroll = element, _el$9);
+          var _el$0 = _$createElement3("scrollbox"), _el$1 = _$createElement3("box"), _el$10 = _$createElement3("text"), _el$12 = _$createElement3("text");
           _$insertNode3(_el$0, _el$1);
-          _$insertNode3(_el$0, _el$11);
-          _$setProp3(_el$0, "flexDirection", "column");
-          _$insertNode3(_el$1, _$createTextNode2(`\u989D\u5EA6`));
-          _$insert3(_el$0, _$createComponent3(For3, {
+          _$use((element) => scroll = element, _el$0);
+          _$insertNode3(_el$1, _el$10);
+          _$insertNode3(_el$1, _el$12);
+          _$setProp3(_el$1, "flexDirection", "column");
+          _$insertNode3(_el$10, _$createTextNode2(`\u989D\u5EA6`));
+          _$insert3(_el$1, _$createComponent3(For3, {
             get each() {
               return quotaSection();
             },
@@ -3031,9 +3015,9 @@ function TokenPlanPanel(props) {
                 return _$memo3(() => !!row.severity)() ? quotaSeverityFg(theme(), row.severity) : void 0;
               }
             })
-          }), _el$11);
-          _$insertNode3(_el$11, _$createTextNode2(`\u4F18\u60E0\u7A97\u53E3`));
-          _$insert3(_el$0, _$createComponent3(For3, {
+          }), _el$12);
+          _$insertNode3(_el$12, _$createTextNode2(`\u4F18\u60E0\u7A97\u53E3`));
+          _$insert3(_el$1, _$createComponent3(For3, {
             get each() {
               return discountSection();
             },
@@ -3049,11 +3033,11 @@ function TokenPlanPanel(props) {
           }), null);
           _$effect3((_p$) => {
             var _v$4 = maxHeight(), _v$5 = TextAttributes.BOLD, _v$6 = colorString(theme().text.action?.primary?.selected, PALETTE.base), _v$7 = TextAttributes.BOLD, _v$8 = colorString(theme().text.action?.primary?.selected, PALETTE.base);
-            _v$4 !== _p$.e && (_p$.e = _$setProp3(_el$9, "maxHeight", _v$4, _p$.e));
-            _v$5 !== _p$.t && (_p$.t = _$setProp3(_el$1, "attributes", _v$5, _p$.t));
-            _v$6 !== _p$.a && (_p$.a = _$setProp3(_el$1, "fg", _v$6, _p$.a));
-            _v$7 !== _p$.o && (_p$.o = _$setProp3(_el$11, "attributes", _v$7, _p$.o));
-            _v$8 !== _p$.i && (_p$.i = _$setProp3(_el$11, "fg", _v$8, _p$.i));
+            _v$4 !== _p$.e && (_p$.e = _$setProp3(_el$0, "maxHeight", _v$4, _p$.e));
+            _v$5 !== _p$.t && (_p$.t = _$setProp3(_el$10, "attributes", _v$5, _p$.t));
+            _v$6 !== _p$.a && (_p$.a = _$setProp3(_el$10, "fg", _v$6, _p$.a));
+            _v$7 !== _p$.o && (_p$.o = _$setProp3(_el$12, "attributes", _v$7, _p$.o));
+            _v$8 !== _p$.i && (_p$.i = _$setProp3(_el$12, "fg", _v$8, _p$.i));
             return _p$;
           }, {
             e: void 0,
@@ -3062,7 +3046,7 @@ function TokenPlanPanel(props) {
             o: void 0,
             i: void 0
           });
-          return _el$9;
+          return _el$0;
         })();
       },
       get children() {
@@ -3080,23 +3064,23 @@ function TokenPlanPanel(props) {
           onManualPaste: requestPaste
         });
       }
-    }), _el$5);
-    _$insert3(_el$5, (() => {
+    }), _el$6);
+    _$insert3(_el$6, (() => {
       var _c$ = _$memo3(() => mode() === "login");
       return () => _c$() ? "Esc \u53D6\u6D88\uFF08\u4F1A\u5173\u95ED\u672C\u6B21\u542F\u52A8\u7684\u6D4F\u89C8\u5668\uFF09" : `${props.view.refreshing() ? "\u5237\u65B0\u4E2D\u2026 \xB7 " : ""}a \u6388\u6743/\u91CD\u65B0\u6388\u6743 \xB7 d \u9000\u51FA\u767B\u5F55 \xB7 \u2191\u2193 \u6EDA\u52A8 \xB7 Esc \u5173\u95ED`;
     })());
     _$effect3((_p$) => {
       var _v$ = TextAttributes.BOLD, _v$2 = colorString(theme().text.base, PALETTE.base), _v$3 = colorString(theme().text.muted, PALETTE.muted);
-      _v$ !== _p$.e && (_p$.e = _$setProp3(_el$4, "attributes", _v$, _p$.e));
-      _v$2 !== _p$.t && (_p$.t = _$setProp3(_el$4, "fg", _v$2, _p$.t));
-      _v$3 !== _p$.a && (_p$.a = _$setProp3(_el$5, "fg", _v$3, _p$.a));
+      _v$ !== _p$.e && (_p$.e = _$setProp3(_el$5, "attributes", _v$, _p$.e));
+      _v$2 !== _p$.t && (_p$.t = _$setProp3(_el$5, "fg", _v$2, _p$.t));
+      _v$3 !== _p$.a && (_p$.a = _$setProp3(_el$6, "fg", _v$3, _p$.a));
       return _p$;
     }, {
       e: void 0,
       t: void 0,
       a: void 0
     });
-    return _el$3;
+    return _el$4;
   })();
 }
 
