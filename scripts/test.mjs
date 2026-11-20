@@ -342,15 +342,15 @@ test("fmtShortDur：不足一分钟向上取整显示秒，分钟/小时/天档�
   assert.equal(fmtShortDur((2 * 24 * 60 + 3 * 60 + 4) * 60_000), "2d3h");
 });
 
-test("usageBar：非法值为空，0/50/100 与越界值始终固定 16 格", () => {
+test("usageBar：非法值为空；█ 未用实心 + ░ 已用虚影（0/50/100 均固定 16 格）", () => {
   assert.equal(usageBar(null), "");
   assert.equal(usageBar(undefined), "");
   assert.equal(usageBar(Number.NaN), "");
-  assert.equal(usageBar(0), "░".repeat(16));
+  assert.equal(usageBar(0), "█".repeat(16));
   assert.equal(usageBar(50), "█".repeat(8) + "░".repeat(8));
-  assert.equal(usageBar(100), "█".repeat(16));
-  assert.equal(usageBar(-1), "░".repeat(16));
-  assert.equal(usageBar(101), "█".repeat(16));
+  assert.equal(usageBar(100), "░".repeat(16));
+  assert.equal(usageBar(-1), "█".repeat(16));
+  assert.equal(usageBar(101), "░".repeat(16));
 });
 
 test("percent：固定一位小数（四舍五入到 0.1），非法值为破折号", () => {
@@ -766,19 +766,29 @@ test("tokenTotal：K/M/B 固定两位小数、Token 全称；<1000 用整数", (
   assert.equal(tokenTotal(Number.NaN), "");
 });
 
-test("segmentedUsageBar / segmentedBar：月条 █ + 周期段 ▓ + 白底 ░，固定 16 格，负号百分比", () => {
+test("segmentedUsageBar / segmentedBar：左 █ 未用 + 紧邻 ▒ 周期消耗 + 右 ░ 已用，固定 16 格", () => {
+  // used 50 → 未用 round(50%×16)=8 格 █；period 25 → 4 格 ▒；其余 4 格 ░
   const line = segmentedUsageBar(50, 25);
-  assert.equal(line.slice(0, 16), "█".repeat(8) + "▓".repeat(4) + "░".repeat(4));
+  assert.equal(line.slice(0, 16), "█".repeat(8) + "▒".repeat(4) + "░".repeat(4));
   assert.equal(line.slice(16), " -25.0%");
   assert.equal(segmentedBar(50, 25), line.slice(0, 16));
-  // 越界 clamp：月条 90% 只剩 2 格空位，周期段不得越过条尾
-  const clamped = segmentedUsageBar(90, 50).slice(0, 16);
-  assert.equal(clamped, "█".repeat(14) + "▓▓");
+  // 85.4 / 1.4：未用 round(14.6%×16)=2 格 █ + ▒×1 + ░×13（用户样例）
+  assert.equal(segmentedBar(85.4, 1.4), "██" + "▒" + "░".repeat(13));
+  assert.equal(segmentedBar(85.4, 1.4).length, 16);
+  // 85 / 10：▒ 向已用区延伸 2 格
+  assert.equal(segmentedBar(85, 10), "██" + "▒▒" + "░".repeat(12));
+  // 越界 clamp：▒ 不得越过可用格数
+  const clamped = segmentedBar(90, 50).slice(0, 16);
+  assert.equal(clamped, "██" + "▒".repeat(8) + "░".repeat(6));
   assert.equal(clamped.length, 16);
-  // 月条已满：没有空位可叠，不画 ▓
-  assert.equal(segmentedUsageBar(100, 20).slice(0, 16), "█".repeat(16));
-  assert.ok(!segmentedUsageBar(100, 20).includes("▓"));
+  // 未用满格 / 已用满格
+  assert.equal(segmentedBar(0, 0), "█".repeat(16));
+  assert.equal(segmentedBar(100, 0), "░".repeat(16));
+  assert.equal(usageBar(100), "░".repeat(16));
   assert.equal(segmentedUsageBar(null, 20), "");
+  // 小增量至少 1 格（0.1% 也要可见），且 0% 不画 ▒
+  assert.equal(segmentedBar(85, 0.1), "██" + "▒" + "░".repeat(13));
+  assert.equal(segmentedBar(85, 0), "██" + "░".repeat(14));
   assert.equal(segmentedUsageBar(50, 0).slice(16), " -0.0%"); // 零消耗也带负号
 });
 
@@ -805,7 +815,7 @@ test("sidebarLines：月额度 / 近7天消耗 / 近5h消耗 各自两行（标�
   // 值行独占一行后：bar 16 格、token 全称、行长 ≤ 40
   for (const line of [lines[1], lines[8], lines[11]]) {
     assert.ok(line.length <= 40, `侧栏行超宽(${line.length}): ${line}`);
-    assert.ok(line.startsWith("█") || line.startsWith("░"));
+    assert.match(line, /^[█▒░]{16} /); // 值行：16 格条 + 空格 + 数值
   }
   assert.match(lines[8], /-\d+\.\d% \d+\.\d{2}M Token$/);
   // 千级 token 保留 `K Token`；零消耗也带负号（`-0.0%`）
@@ -1401,13 +1411,12 @@ test("usageBar：真实合并快照的侧栏与月用量行均含长条和已用
   const lines = sidebarLines(merged, now.getTime());
   assert.equal(lines[0].startsWith("月额度"), true); // 标签行
   const headline = lines[1]; // 值行：bar16 + 82.6%
-  assert.ok(headline.includes("████"));
+  assert.ok(headline.includes("███")); // 未用段（实心）
   assert.ok(headline.includes("82.6%"));
-  assert.match(headline, /^[█░]{16} 82\.6%$/);
+  assert.match(headline, /^[█▒░]{16} 82\.6%$/);
   const usage = quotaRows(quota, now.getTime()).find((row) => row.label === "月用量");
   assert.ok(usage);
-  assert.ok(usage.value.startsWith("████"));
-  assert.ok(usage.value.includes("82.6% 已用"));
+  assert.match(usage.value, /^[█░]{10} 82\.6% 已用/); // 已用块锚定右端（前面是空轨）
 });
 
 test("sidebarLines：真实额度 + 真实文档时首行是额度长条，其后模型行 ≤3 且全为 qwen", async () => {

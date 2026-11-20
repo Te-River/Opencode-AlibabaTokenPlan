@@ -110,8 +110,8 @@ export function overlayFg(theme: Theme, period: "week" | "fiveHour"): string {
   return period === "fiveHour" ? "cyan" : "yellow";
 }
 
-// 额度句里的「长条 + 百分比」段：百分比是一位小数（84.0%），整数写法（84%）也兼容。
-const METER = /^(.*?)([█░]{16} \d+(?:\.\d+)?%)(.*)$/;
+// 额度句里的「长条 + 百分比」段：条由 █/▒/░ 组成，百分比是一位小数（84.0%），整数写法（84%）也兼容。
+const METER = /^(.*?)([█▒░]{16} \d+(?:\.\d+)?%)(.*)$/;
 
 /** 把额度句切成 [前缀, 长条+百分比, 后缀]；不是额度句 → null（视图据此决定是否上语义色）。 */
 export function splitMeter(line: string): [string, string, string] | null {
@@ -138,11 +138,12 @@ export function remainingOf(usedPercent: number): number {
   return Math.round((100 - usedPercent) * 10) / 10;
 }
 
+/** 月额度条：`█` 未用（实心亮色）在左，`░` 已用（虚、灰）在右。 */
 export function usageBar(usedPercent: number | null | undefined, width = 16): string {
   if (usedPercent === null || usedPercent === undefined || !Number.isFinite(usedPercent)) return "";
   const clamped = Math.max(0, Math.min(100, usedPercent));
   const used = Math.round(clamped / 100 * width);
-  return "█".repeat(used) + "░".repeat(width - used);
+  return "█".repeat(width - used) + "░".repeat(used);
 }
 
 /** 消耗量百分比：带负号表示已消耗，一位小数，零也带符号（`-0.0%`）。 */
@@ -151,7 +152,7 @@ export function consumedPercent(value: number | null | undefined): string {
   return `-${Math.abs(value).toFixed(1)}%`;
 }
 
-export type BarSegmentKind = "month" | "period" | "rest";
+export type BarSegmentKind = "unused" | "period" | "used";
 
 export interface BarSegment {
   kind: BarSegmentKind;
@@ -159,13 +160,13 @@ export interface BarSegment {
 }
 
 /**
- * 叠加条按颜色切段：`█` 月额度已用、`▓` 该周期本地增量、`░` 空白。
- * 视图据此逐段上色（月/空段灰色，增量段强调色），整行不能用单色。
+ * 叠加条按颜色切段：`█` 未用（实心亮色）/ `▒` 该周期消耗（彩色）/ `░` 已用（虚、灰）。
+ * 视图据此逐段上色，整行不能用单色。
  */
 export function barSegments(bar: string): BarSegment[] {
   const segments: BarSegment[] = [];
   for (const char of bar) {
-    const kind: BarSegmentKind = char === "█" ? "month" : char === "▓" ? "period" : "rest";
+    const kind: BarSegmentKind = char === "█" ? "unused" : char === "▒" ? "period" : "used";
     const last = segments[segments.length - 1];
     if (last && last.kind === kind) last.text += char;
     else segments.push({ kind, text: char });
@@ -174,8 +175,9 @@ export function barSegments(bar: string): BarSegment[] {
 }
 
 /**
- * 叠加条的纯条部分（不含百分比）：月额度已用 █ + 该周期增量 ▓ + 空白 ░，固定 16 格。
- * 月条已到 100% 时没有空位可叠，只有 █。
+ * 叠加条的纯条部分（不含百分比），从左到右：
+ * 未用 █（长度 round(remaining% × width)，实心亮）→ 周期消耗 ▒（紧贴其右，period>0 时至少 1 格）
+ * → 已用 ░（虚、灰，占剩余格数）。总宽固定 width。
  */
 export function segmentedBar(
   monthUsedPercent: number | null | undefined,
@@ -183,15 +185,14 @@ export function segmentedBar(
   width = 16,
 ): string {
   if (monthUsedPercent === null || monthUsedPercent === undefined || !Number.isFinite(monthUsedPercent)) return "";
-  const monthUsed = Math.round(Math.max(0, Math.min(100, monthUsedPercent)) / 100 * width);
+  const used = Math.max(0, Math.min(100, monthUsedPercent));
+  const unused = Math.round((100 - used) / 100 * width);
   const period = periodUsedPercent === null || periodUsedPercent === undefined || !Number.isFinite(periodUsedPercent)
     ? 0
     : Math.max(0, Math.min(100, periodUsedPercent));
-  const span = Math.min(width - monthUsed, Math.round(period / 100 * width));
-  const cells = Array.from({ length: width }, (_, index) =>
-    index < monthUsed ? "█" : index < monthUsed + span ? "▓" : "░",
-  );
-  return cells.join("");
+  const wanted = period > 0 ? Math.max(1, Math.round(period / 100 * width)) : 0;
+  const span = Math.min(width - unused, wanted);
+  return "█".repeat(unused) + "▒".repeat(span) + "░".repeat(width - unused - span);
 }
 
 /** 叠加条 + 负号百分比（面板/旧调用点用整串；侧栏值行用 `segmentedBar` 以便分段上色）。 */

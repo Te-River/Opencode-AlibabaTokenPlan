@@ -2190,7 +2190,7 @@ function overlayFg(theme, period) {
   if (preferred && preferred !== base) return preferred;
   return period === "fiveHour" ? "cyan" : "yellow";
 }
-var METER = /^(.*?)([█░]{16} \d+(?:\.\d+)?%)(.*)$/;
+var METER = /^(.*?)([█▒░]{16} \d+(?:\.\d+)?%)(.*)$/;
 function splitMeter(line) {
   const parts = METER.exec(line);
   return parts ? [parts[1], parts[2], parts[3]] : null;
@@ -2209,7 +2209,7 @@ function usageBar(usedPercent, width = 16) {
   if (usedPercent === null || usedPercent === void 0 || !Number.isFinite(usedPercent)) return "";
   const clamped = Math.max(0, Math.min(100, usedPercent));
   const used = Math.round(clamped / 100 * width);
-  return "\u2588".repeat(used) + "\u2591".repeat(width - used);
+  return "\u2588".repeat(width - used) + "\u2591".repeat(used);
 }
 function consumedPercent(value) {
   if (value === null || value === void 0 || !Number.isFinite(value)) return DASH;
@@ -2218,7 +2218,7 @@ function consumedPercent(value) {
 function barSegments(bar) {
   const segments = [];
   for (const char of bar) {
-    const kind = char === "\u2588" ? "month" : char === "\u2593" ? "period" : "rest";
+    const kind = char === "\u2588" ? "unused" : char === "\u2592" ? "period" : "used";
     const last = segments[segments.length - 1];
     if (last && last.kind === kind) last.text += char;
     else segments.push({ kind, text: char });
@@ -2227,14 +2227,12 @@ function barSegments(bar) {
 }
 function segmentedBar(monthUsedPercent, periodUsedPercent, width = 16) {
   if (monthUsedPercent === null || monthUsedPercent === void 0 || !Number.isFinite(monthUsedPercent)) return "";
-  const monthUsed = Math.round(Math.max(0, Math.min(100, monthUsedPercent)) / 100 * width);
+  const used = Math.max(0, Math.min(100, monthUsedPercent));
+  const unused = Math.round((100 - used) / 100 * width);
   const period = periodUsedPercent === null || periodUsedPercent === void 0 || !Number.isFinite(periodUsedPercent) ? 0 : Math.max(0, Math.min(100, periodUsedPercent));
-  const span = Math.min(width - monthUsed, Math.round(period / 100 * width));
-  const cells = Array.from(
-    { length: width },
-    (_, index) => index < monthUsed ? "\u2588" : index < monthUsed + span ? "\u2593" : "\u2591"
-  );
-  return cells.join("");
+  const wanted = period > 0 ? Math.max(1, Math.round(period / 100 * width)) : 0;
+  const span = Math.min(width - unused, wanted);
+  return "\u2588".repeat(unused) + "\u2592".repeat(span) + "\u2591".repeat(width - unused - span);
 }
 function tokenTotal(value) {
   if (value === null || value === void 0 || !Number.isFinite(value)) return "";
@@ -2444,7 +2442,7 @@ function QuotaLine(props) {
     return _el$2;
   })();
 }
-var VALUE_LINE = /^([█▓░]{16}) (?=.*)/;
+var VALUE_LINE = /^([█▒░]{16}) (?=.*)/;
 function PeriodLine(props) {
   const base = colorString(props.theme.text.base, "white");
   const muted = colorString(props.theme.text.muted, "gray");
@@ -2474,8 +2472,8 @@ function PeriodLine(props) {
         _$spread(_el$9, _$mergeProps(() => spanFg(accent)), true);
         _$insert(_el$9, () => segment.text);
         return _el$9;
-      })() : segment.kind === "month" ? (
-        // 已用段：正文亮色（不压暗）
+      })() : segment.kind === "unused" ? (
+        // 未用段：实心亮色
         (() => {
           var _el$0 = _$createElement("span");
           _$spread(_el$0, _$mergeProps(() => spanFg(base)), true);
@@ -2483,7 +2481,7 @@ function PeriodLine(props) {
           return _el$0;
         })()
       ) : (
-        // 空轨：灰，弱于已用段
+        // 已用段（░）：虚、灰
         (() => {
           var _el$1 = _$createElement("span");
           _$spread(_el$1, _$mergeProps(() => spanFg(muted)), true);
@@ -2962,7 +2960,7 @@ function TokenPlanPanel(props) {
     _$setProp3(_el$3, "flexDirection", "column");
     _$setProp3(_el$3, "paddingLeft", 2);
     _$setProp3(_el$3, "paddingRight", 2);
-    _$insert3(_el$4, () => mode() === "login" ? "Token Plan \u6388\u6743" : `Token Plan \u989D\u5EA6\u4E0E\u4F18\u60E0 \xB7 v${"0.2.17"}`);
+    _$insert3(_el$4, () => mode() === "login" ? "Token Plan \u6388\u6743" : `Token Plan \u989D\u5EA6\u4E0E\u4F18\u60E0 \xB7 v${"0.2.18"}`);
     _$insert3(_el$3, _$createComponent3(Show3, {
       get when() {
         return notice();

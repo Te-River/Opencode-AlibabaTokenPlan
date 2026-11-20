@@ -47,9 +47,9 @@ function QuotaLine(props: { theme: Theme; line: string; usedPercent: number | nu
 }
 
 /** 侧栏值行：16 格叠加条 + 余下文案（`-12.6% 817.14M Token`）。 */
-const VALUE_LINE = /^([█▓░]{16}) (?=.*)/;
+const VALUE_LINE = /^([█▒░]{16}) (?=.*)/;
 
-/** 周期值行：叠加条逐段上色 —— █ 亮（正文色）、░ 灰、▓ 该行强调色（7d 黄 / 5h 青）。 */
+/** 周期值行：叠加条逐段上色 —— █ 未用（亮）、░ 已用（灰）、▒ 周期消耗（7d 黄 / 5h 青）。 */
 function PeriodLine(props: { theme: Theme; line: string; overlay: "week" | "fiveHour" }) {
   const base = colorString(props.theme.text.base, "white");
   const muted = colorString(props.theme.text.muted, "gray");
@@ -69,11 +69,11 @@ function PeriodLine(props: { theme: Theme; line: string; overlay: "week" | "five
         {(segment) =>
           segment.kind === "period" ? (
             <span {...spanFg(accent)}>{segment.text}</span>
-          ) : segment.kind === "month" ? (
-            // 已用段：正文亮色（不压暗）
+          ) : segment.kind === "unused" ? (
+            // 未用段：实心亮色
             <span {...spanFg(base)}>{segment.text}</span>
           ) : (
-            // 空轨：灰，弱于已用段
+            // 已用段（░）：虚、灰
             <span {...spanFg(muted)}>{segment.text}</span>
           )
         }
