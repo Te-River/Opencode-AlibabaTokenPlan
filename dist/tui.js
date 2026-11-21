@@ -2003,7 +2003,7 @@ function periodUsage(history, nowMs, windowMs) {
     if (s.at < first.at) first = s;
     if (s.at >= last.at) last = s;
   }
-  const delta = Math.round(Math.max(0, last.usedPercent - first.usedPercent) * 100) / 100;
+  const delta = Math.round(Math.max(0, last.usedPercent - first.usedPercent) * 1e4) / 1e4;
   return { usedPercent: delta, since: first.at, samples: inWindow.length };
 }
 
@@ -2127,8 +2127,8 @@ function createClock(intervalMs = 1e3) {
 // src/tui/views.tsx
 import { memo as _$memo } from "@opentui/solid";
 import { effect as _$effect } from "@opentui/solid";
-import { createComponent as _$createComponent } from "@opentui/solid";
 import { insertNode as _$insertNode } from "@opentui/solid";
+import { createComponent as _$createComponent } from "@opentui/solid";
 import { insert as _$insert } from "@opentui/solid";
 import { setProp as _$setProp } from "@opentui/solid";
 import { createElement as _$createElement } from "@opentui/solid";
@@ -2205,6 +2205,11 @@ function splitMeter(line) {
   const parts = METER.exec(line);
   return parts ? [parts[1], parts[2], parts[3]] : null;
 }
+var METER_PARTS = /^(.*?)([█▒░]{16}) ((?:剩 )?\d+(?:\.\d+)?%)(.*)$/;
+function parseMeter(line) {
+  const parts = METER_PARTS.exec(line);
+  return parts ? { prefix: parts[1], bar: parts[2], percent: parts[3], suffix: parts[4] } : null;
+}
 function isQuotaMeterLine(line) {
   return splitMeter(line) !== null;
 }
@@ -2239,7 +2244,7 @@ function segmentedBar(monthUsedPercent, periodUsedPercent, width = 16) {
   if (monthUsedPercent === null || monthUsedPercent === void 0 || !Number.isFinite(monthUsedPercent)) return "";
   const used = Math.max(0, Math.min(100, monthUsedPercent));
   const unused = Math.round((100 - used) / 100 * width);
-  const period = periodUsedPercent === null || periodUsedPercent === void 0 || !Number.isFinite(periodUsedPercent) ? 0 : Math.max(0, Math.min(100, periodUsedPercent));
+  const period = periodUsedPercent === null || periodUsedPercent === void 0 || !Number.isFinite(periodUsedPercent) ? 0 : Math.max(0, periodUsedPercent);
   const wanted = period > 0 ? Math.max(1, Math.round(period / 100 * width)) : 0;
   const span = Math.min(width - unused, wanted);
   return "\u2588".repeat(unused) + "\u2592".repeat(span) + "\u2591".repeat(width - unused - span);
@@ -2428,7 +2433,8 @@ function discountRows(discount, nowMs) {
 // src/tui/views.tsx
 function QuotaLine(props) {
   const base = colorString(props.theme.text.base, PALETTE.base);
-  const parts = splitMeter(props.line);
+  const muted = colorString(props.theme.text.muted, PALETTE.muted);
+  const parts = parseMeter(props.line);
   if (!parts) {
     return (() => {
       var _el$ = _$createElement("text");
@@ -2438,7 +2444,7 @@ function QuotaLine(props) {
       return _el$;
     })();
   }
-  const meterFg = quotaSeverityFg(props.theme, quotaSeverity(props.usedPercent));
+  const percentFg = quotaSeverityFg(props.theme, quotaSeverity(props.usedPercent));
   return (() => {
     var _el$2 = _$createElement("box"), _el$3 = _$createElement("text"), _el$4 = _$createElement("text"), _el$5 = _$createElement("text");
     _$insertNode(_el$2, _el$3);
@@ -2447,13 +2453,25 @@ function QuotaLine(props) {
     _$setProp(_el$2, "flexDirection", "row");
     _$setProp(_el$3, "fg", base);
     _$setProp(_el$3, "wrapMode", "none");
-    _$insert(_el$3, () => parts[0]);
-    _$setProp(_el$4, "fg", meterFg);
+    _$insert(_el$3, () => parts.prefix);
+    _$insert(_el$2, _$createComponent(For, {
+      get each() {
+        return barSegments(parts.bar);
+      },
+      children: (segment) => (() => {
+        var _el$6 = _$createElement("text");
+        _$setProp(_el$6, "wrapMode", "none");
+        _$insert(_el$6, () => segment.text);
+        _$effect((_$p) => _$setProp(_el$6, "fg", segment.kind === "unused" ? base : segment.kind === "period" ? percentFg : muted, _$p));
+        return _el$6;
+      })()
+    }), _el$4);
+    _$setProp(_el$4, "fg", percentFg);
     _$setProp(_el$4, "wrapMode", "none");
-    _$insert(_el$4, () => parts[1]);
+    _$insert(_el$4, () => ` ${parts.percent}`);
     _$setProp(_el$5, "fg", base);
     _$setProp(_el$5, "wrapMode", "none");
-    _$insert(_el$5, () => parts[2]);
+    _$insert(_el$5, () => parts.suffix);
     return _el$2;
   })();
 }
@@ -2464,35 +2482,35 @@ function PeriodLine(props) {
   const parts = VALUE_LINE.exec(props.line);
   if (!parts) {
     return (() => {
-      var _el$6 = _$createElement("text");
-      _$setProp(_el$6, "fg", muted);
-      _$setProp(_el$6, "wrapMode", "none");
-      _$insert(_el$6, () => props.line);
-      return _el$6;
+      var _el$7 = _$createElement("text");
+      _$setProp(_el$7, "fg", muted);
+      _$setProp(_el$7, "wrapMode", "none");
+      _$insert(_el$7, () => props.line);
+      return _el$7;
     })();
   }
   const accent = overlayFg(props.theme, props.overlay);
   const rest = props.line.slice(parts[1].length);
   return (() => {
-    var _el$7 = _$createElement("box"), _el$8 = _$createElement("text");
-    _$insertNode(_el$7, _el$8);
-    _$setProp(_el$7, "flexDirection", "row");
-    _$insert(_el$7, _$createComponent(For, {
+    var _el$8 = _$createElement("box"), _el$9 = _$createElement("text");
+    _$insertNode(_el$8, _el$9);
+    _$setProp(_el$8, "flexDirection", "row");
+    _$insert(_el$8, _$createComponent(For, {
       get each() {
         return barSegments(parts[1]);
       },
       children: (segment) => (() => {
-        var _el$9 = _$createElement("text");
-        _$setProp(_el$9, "wrapMode", "none");
-        _$insert(_el$9, () => segment.text);
-        _$effect((_$p) => _$setProp(_el$9, "fg", segment.kind === "period" ? accent : segment.kind === "unused" ? base : muted, _$p));
-        return _el$9;
+        var _el$0 = _$createElement("text");
+        _$setProp(_el$0, "wrapMode", "none");
+        _$insert(_el$0, () => segment.text);
+        _$effect((_$p) => _$setProp(_el$0, "fg", segment.kind === "period" ? accent : segment.kind === "unused" ? base : muted, _$p));
+        return _el$0;
       })()
-    }), _el$8);
-    _$setProp(_el$8, "fg", muted);
-    _$setProp(_el$8, "wrapMode", "none");
-    _$insert(_el$8, rest);
-    return _el$7;
+    }), _el$9);
+    _$setProp(_el$9, "fg", muted);
+    _$setProp(_el$9, "wrapMode", "none");
+    _$insert(_el$9, rest);
+    return _el$8;
   })();
 }
 function SidebarLine(props) {
@@ -2524,14 +2542,14 @@ function SidebarLine(props) {
   }
   const fg = props.line.startsWith(MONTH_LABEL) ? colorString(props.theme.text.base, PALETTE.base) : colorString(props.theme.text.muted, PALETTE.muted);
   return (() => {
-    var _el$0 = _$createElement("text");
-    _$setProp(_el$0, "fg", fg);
-    _$setProp(_el$0, "wrapMode", "none");
-    _$insert(_el$0, (() => {
+    var _el$1 = _$createElement("text");
+    _$setProp(_el$1, "fg", fg);
+    _$setProp(_el$1, "wrapMode", "none");
+    _$insert(_el$1, (() => {
       var _c$ = _$memo(() => props.line.length > 0);
       return () => _c$() ? props.line : " ";
     })());
-    return _el$0;
+    return _el$1;
   })();
 }
 function SidebarView(props) {
@@ -2542,9 +2560,9 @@ function SidebarView(props) {
     return current ? sidebarLines(current, now()) : [];
   };
   return (() => {
-    var _el$1 = _$createElement("box");
-    _$setProp(_el$1, "flexDirection", "column");
-    _$insert(_el$1, _$createComponent(For, {
+    var _el$10 = _$createElement("box");
+    _$setProp(_el$10, "flexDirection", "column");
+    _$insert(_el$10, _$createComponent(For, {
       get each() {
         return lines();
       },
@@ -2561,7 +2579,7 @@ function SidebarView(props) {
         }
       })
     }));
-    return _el$1;
+    return _el$10;
   })();
 }
 function FooterView(props) {
@@ -2574,11 +2592,11 @@ function FooterView(props) {
       return line().length > 0;
     },
     get children() {
-      var _el$10 = _$createElement("text");
-      _$setProp(_el$10, "wrapMode", "none");
-      _$insert(_el$10, line);
-      _$effect((_$p) => _$setProp(_el$10, "fg", colorString(props.context.theme.text.muted, PALETTE.muted), _$p));
-      return _el$10;
+      var _el$11 = _$createElement("text");
+      _$setProp(_el$11, "wrapMode", "none");
+      _$insert(_el$11, line);
+      _$effect((_$p) => _$setProp(_el$11, "fg", colorString(props.context.theme.text.muted, PALETTE.muted), _$p));
+      return _el$11;
     }
   });
 }
@@ -2962,7 +2980,7 @@ function TokenPlanPanel(props) {
     _$setProp3(_el$4, "flexDirection", "column");
     _$setProp3(_el$4, "paddingLeft", 2);
     _$setProp3(_el$4, "paddingRight", 2);
-    _$insert3(_el$5, () => mode() === "login" ? "Token Plan \u6388\u6743" : `Token Plan \u989D\u5EA6\u4E0E\u4F18\u60E0 \xB7 v${"0.2.21"}`);
+    _$insert3(_el$5, () => mode() === "login" ? "Token Plan \u6388\u6743" : `Token Plan \u989D\u5EA6\u4E0E\u4F18\u60E0 \xB7 v${"0.2.22"}`);
     _$insert3(_el$4, _$createComponent3(Show3, {
       get when() {
         return notice();

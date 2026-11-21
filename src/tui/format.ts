@@ -132,6 +132,21 @@ export function splitMeter(line: string): [string, string, string] | null {
   return parts ? [parts[1], parts[2], parts[3]] : null;
 }
 
+/** 月额度值行的细粒度切分：条（再按字符分未用/已用）+ 百分比（severity 上色）+ 其余。 */
+export interface MeterParts {
+  prefix: string;
+  bar: string;
+  percent: string;
+  suffix: string;
+}
+
+const METER_PARTS = /^(.*?)([█▒░]{16}) ((?:剩 )?\d+(?:\.\d+)?%)(.*)$/;
+
+export function parseMeter(line: string): MeterParts | null {
+  const parts = METER_PARTS.exec(line);
+  return parts ? { prefix: parts[1], bar: parts[2], percent: parts[3], suffix: parts[4] } : null;
+}
+
 /** 月额度值行识别（按内容，不按行号）：`bar16 + 84.0%` 形状；周期行带 `-N.N%`，不会命中。 */
 export function isQuotaMeterLine(line: string): boolean {
   return splitMeter(line) !== null;
@@ -189,8 +204,9 @@ export function barSegments(bar: string): BarSegment[] {
 
 /**
  * 叠加条的纯条部分（不含百分比），从左到右：
- * 未用 █（长度 round(remaining% × width)，实心亮）→ 周期消耗 ▒（紧贴其右，period>0 时至少 1 格）
+ * 未用 █（长度 round(remaining% × width)，实心亮）→ 周期消耗 ▒（紧贴其右）
  * → 已用 ░（虚、灰，占剩余格数）。总宽固定 width。
+ * periodUsedPercent 用**未取整的原始差值**判断：只要 > 0（如 0.0004%）就至少画 1 格 ▒。
  */
 export function segmentedBar(
   monthUsedPercent: number | null | undefined,
@@ -202,7 +218,7 @@ export function segmentedBar(
   const unused = Math.round((100 - used) / 100 * width);
   const period = periodUsedPercent === null || periodUsedPercent === undefined || !Number.isFinite(periodUsedPercent)
     ? 0
-    : Math.max(0, Math.min(100, periodUsedPercent));
+    : Math.max(0, periodUsedPercent);
   const wanted = period > 0 ? Math.max(1, Math.round(period / 100 * width)) : 0;
   const span = Math.min(width - unused, wanted);
   return "█".repeat(unused) + "▒".repeat(span) + "░".repeat(width - unused - span);

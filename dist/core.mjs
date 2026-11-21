@@ -2020,7 +2020,7 @@ function periodUsage(history, nowMs, windowMs) {
     if (s.at < first.at) first = s;
     if (s.at >= last.at) last = s;
   }
-  const delta = Math.round(Math.max(0, last.usedPercent - first.usedPercent) * 100) / 100;
+  const delta = Math.round(Math.max(0, last.usedPercent - first.usedPercent) * 1e4) / 1e4;
   return { usedPercent: delta, since: first.at, samples: inWindow.length };
 }
 

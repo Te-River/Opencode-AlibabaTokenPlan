@@ -86,6 +86,7 @@ export function periodUsage(history: UsageSample[], nowMs: number, windowMs: num
     if (s.at < first.at) first = s;
     if (s.at >= last.at) last = s;
   }
-  const delta = Math.round(Math.max(0, last.usedPercent - first.usedPercent) * 100) / 100; // 与 usedPercent 同为 2 位小数
+  // 保留 4 位小数：<0.01% 的真实增量不能被抹成 0（条上至少要画 1 格叠加段），显示层再定小数位。
+  const delta = Math.round(Math.max(0, last.usedPercent - first.usedPercent) * 1e4) / 1e4;
   return { usedPercent: delta, since: first.at, samples: inWindow.length };
 }

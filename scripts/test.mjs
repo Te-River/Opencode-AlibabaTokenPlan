@@ -85,7 +85,7 @@ const formatBundle = await build({
   write: false,
   logLevel: "silent",
 });
-const { barSegments, colorString, discountRows, footerLine, isQuotaMeterLine, overlayFg, percent, quotaRows, quotaSeverityFg, remainingOf, rowLabelText, segmentedBar, segmentedUsageBar, sidebarLines, splitMeter, tokenTotal, usageBar } = await import(
+const { barSegments, colorString, discountRows, footerLine, isQuotaMeterLine, overlayFg, parseMeter, percent, quotaRows, quotaSeverityFg, remainingOf, rowLabelText, segmentedBar, segmentedUsageBar, sidebarLines, splitMeter, tokenTotal, usageBar } = await import(
   `data:text/javascript;base64,${Buffer.from(formatBundle.outputFiles[0].text).toString("base64")}`,
 );
 
@@ -789,6 +789,10 @@ test("segmentedUsageBar / segmentedBar：左 █ 未用 + 紧邻 ▒ 周期消�
   // 小增量至少 1 格（0.1% 也要可见），且 0% 不画 ▒
   assert.equal(segmentedBar(85, 0.1), "██" + "▒" + "░".repeat(13));
   assert.equal(segmentedBar(85, 0), "██" + "░".repeat(14));
+  // 原始差值未取整：0.0004%（显示 -0.0%）也要画 1 格
+  assert.equal(segmentedBar(85.4, 0.0004), "██" + "▒" + "░".repeat(13));
+  assert.equal(segmentedBar(85.4, 0.04), "██" + "▒" + "░".repeat(13));
+  assert.equal(segmentedBar(85, 50), "██" + "▒".repeat(8) + "░".repeat(6)); // 50% → 8 格
   assert.equal(segmentedUsageBar(50, 0).slice(16), " -0.0%"); // 零消耗也带负号
 });
 
@@ -924,7 +928,25 @@ test("colorString：非字符串/空白色值一律回退，绝不把对象传�
   assert.equal(colorString(ok.text.base, "white"), "#ffffff");
 });
 
-test("overlayFg：7 天叠加段黄、5h 叠加段青，两者不同色（主题缺 info 时用命名色）", () => {
+test("parseMeter：月值行切成 bar / percent / suffix，bar 再分为未用(白)与已用(灰)", () => {
+  const line = usageBar(85.4) + " 14.6% 3.63B Token";
+  const parts = parseMeter(line);
+  assert.ok(parts);
+  assert.equal(parts.bar, usageBar(85.4));
+  assert.equal(parts.percent, "14.6%");
+  assert.equal(parts.suffix, " 3.63B Token");
+  assert.deepEqual(
+    barSegments(parts.bar).map((segment) => segment.kind),
+    ["unused", "used"],
+  );
+  assert.equal(parseMeter("近7天消耗"), null);
+  assert.equal(parseMeter(segmentedBar(85, 1.4) + " -1.4% 1.2M Token"), null); // 周期行带负号，不是 meter 行
+  // percent 段的颜色来自 severity 的 hex
+  const warning = quotaSeverityFg({ text: { base: "#FFFFFF", feedback: { warning: { base: "#FFFFFF" } } } }, "warning");
+  assert.equal(warning, "#E5C07B");
+});
+
+test("overlayFg：7 天叠加段黄、5h 叠加段青，两者不同色（主题缺 info 时用回退 hex）", () => {
   const bare = { text: { base: "#ffffff", feedback: { warning: { base: "#ffffff" } } } };
   assert.equal(overlayFg(bare, "week"), "#E5C07B");
   assert.equal(overlayFg(bare, "fiveHour"), "#56B6C2");

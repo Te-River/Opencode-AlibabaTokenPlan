@@ -12,18 +12,20 @@ import {
   MONTH_LABEL,
   overlayFg,
   PALETTE,
+  parseMeter,
   quotaSeverity,
   quotaSeverityFg,
   sidebarLines,
-  splitMeter,
 } from "./format";
 
 type Theme = TuiContext["theme"];
 
 /** 多色行用「同级多个 <text> + flexDirection:row」实现：该渲染器里嵌套 span 的 fg 不生效。 */
+/** 月额度值行：bar 底色保持白/灰，只有百分比按 severity 上色；Token 合计用正文色。 */
 function QuotaLine(props: { theme: Theme; line: string; usedPercent: number | null | undefined }) {
   const base = colorString(props.theme.text.base, PALETTE.base);
-  const parts = splitMeter(props.line);
+  const muted = colorString(props.theme.text.muted, PALETTE.muted);
+  const parts = parseMeter(props.line);
   if (!parts) {
     return (
       <text fg={base} wrapMode="none">
@@ -31,12 +33,22 @@ function QuotaLine(props: { theme: Theme; line: string; usedPercent: number | nu
       </text>
     );
   }
-  const meterFg = quotaSeverityFg(props.theme, quotaSeverity(props.usedPercent));
+  const percentFg = quotaSeverityFg(props.theme, quotaSeverity(props.usedPercent));
   return (
     <box flexDirection="row">
-      <text fg={base} wrapMode="none">{parts[0]}</text>
-      <text fg={meterFg} wrapMode="none">{parts[1]}</text>
-      <text fg={base} wrapMode="none">{parts[2]}</text>
+      <text fg={base} wrapMode="none">{parts.prefix}</text>
+      <For each={barSegments(parts.bar)}>
+        {(segment) => (
+          <text
+            fg={segment.kind === "unused" ? base : segment.kind === "period" ? percentFg : muted}
+            wrapMode="none"
+          >
+            {segment.text}
+          </text>
+        )}
+      </For>
+      <text fg={percentFg} wrapMode="none">{` ${parts.percent}`}</text>
+      <text fg={base} wrapMode="none">{parts.suffix}</text>
     </box>
   );
 }
