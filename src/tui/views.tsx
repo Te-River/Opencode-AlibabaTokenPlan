@@ -36,7 +36,10 @@ function QuotaLine(props: { theme: Theme; line: string; usedPercent: number | nu
   const percentFg = quotaSeverityFg(props.theme, quotaSeverity(props.usedPercent));
   return (
     <box flexDirection="row">
-      <text fg={base} wrapMode="none">{parts.prefix}</text>
+      {/* 空前缀/后缀不渲染节点：空 <text> 会占一列，把条推右 */}
+      <Show when={parts.prefix.length > 0}>
+        <text fg={base} wrapMode="none">{parts.prefix}</text>
+      </Show>
       <For each={barSegments(parts.bar)}>
         {(segment) => (
           <text
@@ -48,7 +51,9 @@ function QuotaLine(props: { theme: Theme; line: string; usedPercent: number | nu
         )}
       </For>
       <text fg={percentFg} wrapMode="none">{` ${parts.percent}`}</text>
-      <text fg={base} wrapMode="none">{parts.suffix}</text>
+      <Show when={parts.suffix.length > 0}>
+        <text fg={base} wrapMode="none">{parts.suffix}</text>
+      </Show>
     </box>
   );
 }
@@ -82,7 +87,9 @@ function PeriodLine(props: { theme: Theme; line: string; overlay: "week" | "five
           </text>
         )}
       </For>
-      <text fg={muted} wrapMode="none">{rest}</text>
+      <Show when={rest.length > 0}>
+        <text fg={muted} wrapMode="none">{rest}</text>
+      </Show>
     </box>
   );
 }

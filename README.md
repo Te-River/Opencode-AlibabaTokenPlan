@@ -103,7 +103,7 @@ JSX 在构建期编译成 `@opentui/solid` 的 `_$` 助手，运行期不装 JSX
 
 发布：`npm run publish:check`（build + test + smoke + `npm pack --dry-run`）→ `npm publish`。
 
-给 AI agent 的安装提示词：[`AGENT_INSTALL.md`](./AGENT_INSTALL.md)。
+给 AI agent 的安装提示词：[`AGENT_INSTALL.md`](./AGENT_INSTALL.md)；用户/Agent 通用安装指南（可复制命令）：[`INSTALL.md`](./INSTALL.md)。
 
 ## 未做的部分
 

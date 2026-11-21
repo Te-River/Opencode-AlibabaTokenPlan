@@ -2446,14 +2446,21 @@ function QuotaLine(props) {
   }
   const percentFg = quotaSeverityFg(props.theme, quotaSeverity(props.usedPercent));
   return (() => {
-    var _el$2 = _$createElement("box"), _el$3 = _$createElement("text"), _el$4 = _$createElement("text"), _el$5 = _$createElement("text");
-    _$insertNode(_el$2, _el$3);
+    var _el$2 = _$createElement("box"), _el$4 = _$createElement("text");
     _$insertNode(_el$2, _el$4);
-    _$insertNode(_el$2, _el$5);
     _$setProp(_el$2, "flexDirection", "row");
-    _$setProp(_el$3, "fg", base);
-    _$setProp(_el$3, "wrapMode", "none");
-    _$insert(_el$3, () => parts.prefix);
+    _$insert(_el$2, _$createComponent(Show, {
+      get when() {
+        return parts.prefix.length > 0;
+      },
+      get children() {
+        var _el$3 = _$createElement("text");
+        _$setProp(_el$3, "fg", base);
+        _$setProp(_el$3, "wrapMode", "none");
+        _$insert(_el$3, () => parts.prefix);
+        return _el$3;
+      }
+    }), _el$4);
     _$insert(_el$2, _$createComponent(For, {
       get each() {
         return barSegments(parts.bar);
@@ -2469,9 +2476,18 @@ function QuotaLine(props) {
     _$setProp(_el$4, "fg", percentFg);
     _$setProp(_el$4, "wrapMode", "none");
     _$insert(_el$4, () => ` ${parts.percent}`);
-    _$setProp(_el$5, "fg", base);
-    _$setProp(_el$5, "wrapMode", "none");
-    _$insert(_el$5, () => parts.suffix);
+    _$insert(_el$2, _$createComponent(Show, {
+      get when() {
+        return parts.suffix.length > 0;
+      },
+      get children() {
+        var _el$5 = _$createElement("text");
+        _$setProp(_el$5, "fg", base);
+        _$setProp(_el$5, "wrapMode", "none");
+        _$insert(_el$5, () => parts.suffix);
+        return _el$5;
+      }
+    }), null);
     return _el$2;
   })();
 }
@@ -2492,8 +2508,7 @@ function PeriodLine(props) {
   const accent = overlayFg(props.theme, props.overlay);
   const rest = props.line.slice(parts[1].length);
   return (() => {
-    var _el$8 = _$createElement("box"), _el$9 = _$createElement("text");
-    _$insertNode(_el$8, _el$9);
+    var _el$8 = _$createElement("box");
     _$setProp(_el$8, "flexDirection", "row");
     _$insert(_el$8, _$createComponent(For, {
       get each() {
@@ -2506,10 +2521,19 @@ function PeriodLine(props) {
         _$effect((_$p) => _$setProp(_el$0, "fg", segment.kind === "period" ? accent : segment.kind === "unused" ? base : muted, _$p));
         return _el$0;
       })()
-    }), _el$9);
-    _$setProp(_el$9, "fg", muted);
-    _$setProp(_el$9, "wrapMode", "none");
-    _$insert(_el$9, rest);
+    }), null);
+    _$insert(_el$8, _$createComponent(Show, {
+      get when() {
+        return rest.length > 0;
+      },
+      get children() {
+        var _el$9 = _$createElement("text");
+        _$setProp(_el$9, "fg", muted);
+        _$setProp(_el$9, "wrapMode", "none");
+        _$insert(_el$9, rest);
+        return _el$9;
+      }
+    }), null);
     return _el$8;
   })();
 }
@@ -2980,7 +3004,7 @@ function TokenPlanPanel(props) {
     _$setProp3(_el$4, "flexDirection", "column");
     _$setProp3(_el$4, "paddingLeft", 2);
     _$setProp3(_el$4, "paddingRight", 2);
-    _$insert3(_el$5, () => mode() === "login" ? "Token Plan \u6388\u6743" : `Token Plan \u989D\u5EA6\u4E0E\u4F18\u60E0 \xB7 v${"0.2.22"}`);
+    _$insert3(_el$5, () => mode() === "login" ? "Token Plan \u6388\u6743" : `Token Plan \u989D\u5EA6\u4E0E\u4F18\u60E0 \xB7 v${"0.2.23"}`);
     _$insert3(_el$4, _$createComponent3(Show3, {
       get when() {
         return notice();
